@@ -5,7 +5,7 @@ openpyxl はブックを読み込んで作り直すため、画像・図形な�
 バイト単位でそのまま残す。名前空間の接頭辞（mc:Ignorable が参照する x14ac 等）を保つため lxml を使う。
 
 できること:
-  - シートの複製（関連する図形・印刷設定なども複製。画像本体は共有）
+  - シート名の変更（印刷範囲などの参照も追従）
   - セルへの数値・文字列の書き込み / 値のクリア（書式は残す）
   - セルを文字列書式（@）にする
 """
@@ -21,24 +21,17 @@ from lxml import etree
 
 NS_MAIN = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 NS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
-NS_PKG_REL = 'http://schemas.openxmlformats.org/package/2006/relationships'
 NS_CT = 'http://schemas.openxmlformats.org/package/2006/content-types'
 NS_XML = 'http://www.w3.org/XML/1998/namespace'
-REL_WORKSHEET = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet'
 REL_CALC_CHAIN = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/calcChain'
-CT_WORKSHEET = 'application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml'
 TEXT_FORMAT_ID = '49'   # 組み込みの「@」
 
 M = f'{{{NS_MAIN}}}'
 _CELL_REF = re.compile(r'([A-Z]+)(\d+)$')
 
-# 複製せず共有してよい関連先（画像などのバイナリ本体）
-_SHARED_REL_SUFFIXES = ('/image', '/hyperlink', '/oleObject', '/package')
 # workbook.xml で calcPr より後ろに来る要素
 _AFTER_CALC_PR = {'oleSize', 'customWorkbookViews', 'pivotCaches', 'smartTagPr', 'smartTagTypes',
                   'webPublishing', 'fileRecoveryPr', 'webPublishObjects', 'extLst'}
-# 複製するとブック内で一意であるべき名前が重複するもの
-_UNSUPPORTED_REL_SUFFIXES = ('/table', '/pivotTable', '/queryTable')
 
 
 class XlsxPatchError(RuntimeError):
@@ -53,10 +46,6 @@ def _resolve(base_part: str, target: str) -> str:
     if target.startswith('/'):
         return target.lstrip('/')
     return posixpath.normpath(posixpath.join(posixpath.dirname(base_part), target))
-
-
-def _relative(base_part: str, target_part: str) -> str:
-    return posixpath.relpath(target_part, posixpath.dirname(base_part))
 
 
 def _col_number(letters: str) -> int:
@@ -91,37 +80,15 @@ class XlsxPackage:
             self._trees[part] = etree.fromstring(self._parts[part], parser).getroottree()
         return self._trees[part].getroot()
 
-    def _add_part(self, part: str, data: bytes) -> None:
-        self._parts[part] = data
-        self._order.append(part)
-
     def _remove_part(self, part: str) -> None:
         self._parts.pop(part, None)
         self._trees.pop(part, None)
         if part in self._order:
             self._order.remove(part)
 
-    def _unique_part_name(self, part: str) -> str:
-        directory, name = posixpath.split(part)
-        stem, ext = posixpath.splitext(name)
-        base = re.sub(r'\d+$', '', stem)
-        number = 1
-        while True:
-            candidate = posixpath.join(directory, f"{base}{number}{ext}")
-            if candidate not in self._parts:
-                return candidate
-            number += 1
-
     def _rels(self, part: str) -> Optional[etree._Element]:
         path = _rels_path(part)
         return self._tree(path) if path in self._parts else None
-
-    def _next_rel_id(self, rels: etree._Element) -> str:
-        used = {rel.get('Id') for rel in rels}
-        number = 1
-        while f"rId{number}" in used:
-            number += 1
-        return f"rId{number}"
 
     def _content_override(self, part: str) -> Optional[etree._Element]:
         types = self._tree('[Content_Types].xml')
@@ -163,71 +130,34 @@ class XlsxPackage:
                 return part
         raise XlsxPatchError(f"シートがありません: {name}")
 
-    def _copy_part_tree(self, part: str, copied: Dict[str, str]) -> str:
-        """part と、その関連パーツを再帰的に複製して新しいパーツ名を返す"""
-        if part in copied:
-            return copied[part]
-        new_part = self._unique_part_name(part)
-        copied[part] = new_part
-        self._add_part(new_part, self._parts[part])
-        override = self._content_override(part)
-        if override is not None:
-            new_override = deepcopy(override)
-            new_override.set('PartName', '/' + new_part)
-            override.addnext(new_override)
-
-        rels = self._rels(part)
-        if rels is not None:
-            new_rels = deepcopy(rels)
-            for rel in new_rels:
-                rel_type = rel.get('Type', '')
-                if rel.get('TargetMode') == 'External' or rel_type.endswith(_SHARED_REL_SUFFIXES):
-                    target = _resolve(part, rel.get('Target')) if rel.get('TargetMode') != 'External' else None
-                    if target:
-                        rel.set('Target', _relative(new_part, target))
-                    continue
-                if rel_type.endswith(_UNSUPPORTED_REL_SUFFIXES):
-                    raise XlsxPatchError(f"テーブル等を含むシートは複製できません: {part}")
-                child = self._copy_part_tree(_resolve(part, rel.get('Target')), copied)
-                rel.set('Target', _relative(new_part, child))
-            self._add_part(_rels_path(new_part), b'')
-            self._trees[_rels_path(new_part)] = new_rels.getroottree()
-        return new_part
-
-    def copy_sheet(self, source_name: str, new_name: str) -> None:
-        """末尾に複製する（Excel の「移動またはコピー」で末尾にコピーしたのと同じ並び）"""
-        if self.find_sheet(new_name):
+    def rename_sheet(self, old_name: str, new_name: str) -> None:
+        """シート名を変え、印刷範囲などの名前定義・数式・文書プロパティ内の参照も合わせて直す"""
+        actual = self.find_sheet(old_name)
+        if not actual:
+            raise XlsxPatchError(f"シートがありません: {old_name}")
+        existing = self.find_sheet(new_name)
+        if existing and existing != actual:
             raise XlsxPatchError(f"同名のシートがあります: {new_name}")
-        source_name = self.find_sheet(source_name) or source_name
-        source_part = self.sheet_part(source_name)
-        source_index = self.sheet_names.index(source_name)
-        new_part = self._copy_part_tree(source_part, {})
 
-        # 複製先は選択状態にしない（複数シートが選択された状態で開かれるのを防ぐ）
-        for view in self._tree(new_part).iter(f'{M}sheetView'):
-            view.attrib.pop('tabSelected', None)
+        def replace_refs(text: str) -> str:
+            # 'シート名'!A1 と シート名!A1 の両方の書き方がある。新しい名前は常に引用符で囲む
+            return text.replace(f"'{actual}'!", f"'{new_name}'!").replace(f"{actual}!", f"'{new_name}'!")
 
         workbook = self._workbook_part()
-        wb_rels = self._rels(workbook)
-        rel_id = self._next_rel_id(wb_rels)
-        etree.SubElement(wb_rels, f'{{{NS_PKG_REL}}}Relationship',
-                         Id=rel_id, Type=REL_WORKSHEET, Target=_relative(workbook, new_part))
-        sheets = self._tree(workbook).find(f'{M}sheets')
-        sheet_id = max(int(s.get('sheetId')) for s in sheets) + 1
-        new_sheet = etree.SubElement(sheets, f'{M}sheet', name=new_name, sheetId=str(sheet_id))
-        new_sheet.set(f'{{{NS_REL}}}id', rel_id)
-        new_index = len(sheets) - 1
-
-        # 印刷範囲などシート単位の名前定義も複製する
+        for sheet, part in list(self._sheets()):
+            if sheet.get('name') == actual:
+                sheet.set('name', new_name)
+            for formula in self._tree(part).iter(f'{M}f'):
+                if formula.text and actual in formula.text:
+                    formula.text = replace_refs(formula.text)
         defined_names = self._tree(workbook).find(f'{M}definedNames')
-        if defined_names is not None:
-            for defined in list(defined_names):
-                if defined.get('localSheetId') == str(source_index):
-                    clone = deepcopy(defined)
-                    clone.set('localSheetId', str(new_index))
-                    clone.text = (clone.text or '').replace(f"'{source_name}'!", f"'{new_name}'!") \
-                        .replace(f"{source_name}!", f"'{new_name}'!")
-                    defined_names.append(clone)
+        for defined in defined_names if defined_names is not None else ():
+            if defined.text and actual in defined.text:
+                defined.text = replace_refs(defined.text)
+        if 'docProps/app.xml' in self._parts:
+            for el in self._tree('docProps/app.xml').iter():
+                if isinstance(el.tag, str) and etree.QName(el).localname == 'lpstr' and el.text == actual:
+                    el.text = new_name
 
     # ---------- セル ----------
 

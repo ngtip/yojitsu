@@ -3,7 +3,7 @@
 BP: 自社向け と PJ向け の2ファイル / プロパー: PJ向け のみ
 出力先: <出力Dir>/<YYYY>/<MM>/{自社向け,PJ向け}/
 
-テンプレートのシート 'XX月実績' を複製して '<M>月実績' とし、次のセルに書き込む。
+テンプレートのシート 'XX月実績' を '<M>月実績' に改名し（複製はしない）、次のセルに書き込む。
   B7 年 / E7 月 / H7 所属（自社向け=BP会社名, PJ向け=自社正式名） / N7 氏名
   F9 PJ名 / F10 PJコード（自社向けのみ・文字列）
   14〜44行目 = 1〜31日: B 日 / D 曜日 / F〜J 実績（PJ向けは F に合計のみ）
@@ -98,7 +98,7 @@ class XmlWriter:
     def write(self, template: Path, output: Path, data: SheetData) -> None:
         package = XlsxPackage(template)
         if not package.find_sheet(data.sheet_name):
-            package.copy_sheet(TEMPLATE_SHEET, data.sheet_name)
+            package.rename_sheet(TEMPLATE_SHEET, data.sheet_name)
         package.set_cells(data.sheet_name, {**data.cells, **data.text_cells}, text_refs=data.text_cells)
         package.save(output)
 
@@ -107,15 +107,28 @@ class XmlWriter:
 
 
 class ComWriter:
-    """Excel COM。テンプレートは種類ごとに1度だけ開き、SaveCopyAs で保存して使い回す"""
+    """Excel COM。テンプレートは種類ごとに1度だけ開き、SaveCopyAs で保存して使い回す
+
+    ユーザーが開いている Excel には触れない:
+      - DispatchEx で専用の Excel プロセスを新しく起動する（Dispatch だと起動中の Excel に繋がり、
+        最後の Quit でユーザーのブックまで閉じてしまう。旧実装の問題）
+      - 処理中は IgnoreRemoteRequests で、ユーザーがダブルクリックで開いたファイルを受け取らない
+      - 終了時は専用プロセスだけを閉じ、残っていればそのプロセスだけを強制終了する
+    """
+
+    QUIT_WAIT_MS = 5000
 
     def __init__(self):
         import win32com.client  # type: ignore
+        import win32process  # type: ignore
 
         self.excel = win32com.client.DispatchEx('Excel.Application')
         self.excel.Visible = False
         self.excel.DisplayAlerts = False
+        self.excel.IgnoreRemoteRequests = True
+        _, self.pid = win32process.GetWindowThreadProcessId(self.excel.Hwnd)
         self.workbooks = {}
+        logger.info(f"専用の Excel プロセスを起動しました (pid={self.pid})")
 
     def write(self, template: Path, output: Path, data: SheetData) -> None:
         key = str(template.resolve())
@@ -125,8 +138,8 @@ class ComWriter:
         try:
             ws = wb.Worksheets(data.sheet_name)
         except Exception:
-            wb.Worksheets(TEMPLATE_SHEET).Copy(After=wb.Worksheets(wb.Worksheets.Count))
-            ws = wb.Worksheets(wb.Worksheets.Count)
+            # テンプレートのシートを複製せず名前だけ変える（出力に XX月実績 を残さない）
+            ws = wb.Worksheets(TEMPLATE_SHEET)
             ws.Name = data.sheet_name
         try:
             for ref, value in data.cells.items():
@@ -141,9 +154,31 @@ class ComWriter:
                 ws.Range(ref).Value = ''
 
     def close(self) -> None:
-        for wb in self.workbooks.values():
-            wb.Close(SaveChanges=False)
-        self.excel.Quit()
+        import win32api  # type: ignore
+        import win32con  # type: ignore
+        import win32event  # type: ignore
+
+        try:
+            for wb in self.workbooks.values():
+                wb.Close(SaveChanges=False)
+            self.excel.IgnoreRemoteRequests = False
+            self.excel.Quit()
+        except Exception as e:
+            logger.warning(f"Excel の終了処理でエラー: {e}")
+        finally:
+            self.workbooks.clear()
+            self.excel = None
+        # COM の参照が切れても Excel が残ることがあるため、専用プロセスだけを確実に終わらせる
+        try:
+            handle = win32api.OpenProcess(win32con.SYNCHRONIZE | win32con.PROCESS_TERMINATE, False, self.pid)
+        except Exception:
+            return  # 既に終了している
+        try:
+            if win32event.WaitForSingleObject(handle, self.QUIT_WAIT_MS) == win32event.WAIT_TIMEOUT:
+                win32api.TerminateProcess(handle, 1)
+                logger.warning(f"専用の Excel プロセスが残ったため終了させました (pid={self.pid})")
+        finally:
+            win32api.CloseHandle(handle)
 
 
 WRITER_KINDS = ('auto', 'com', 'xml')
