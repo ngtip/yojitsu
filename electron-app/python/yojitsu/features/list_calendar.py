@@ -4,7 +4,7 @@
 対象月と翌月の2シートを 一覧カレンダー.xlsx に出力する。
 
 テンプレート: シート 'yyyymm'（1〜2行目がタイトルとヘッダ。データは3行目から）
-  A 日付 | B 拠点別人数 | C メンバ | D 勤怠 | E 行先 | F PC持出 | G 宿泊 | H wifi | I 備考
+  A 日付 | B 拠点別人数 | C メンバ | D 勤怠 | E 行先 | F PC持出 | G 入館証持出 | H wifi持出 | I 備考
 
 表示ルール:
   - 平日は全メンバ、土日祝は勤怠が入っているメンバだけ（誰もいなければ空行1行）
@@ -132,7 +132,7 @@ def _write_day(ws, start_row: int, day: date, rows: List[_Row], counts: Dict[str
                 entry.attendance if entry else '',
                 entry.location if entry else '',
                 (entry.pc if entry else '') or NONE_MARK,
-                (entry.stay if entry else '') or NONE_MARK,
+                (entry.badge if entry else '') or NONE_MARK,
                 (entry.wifi if entry else '') or NONE_MARK,
                 entry.remarks if entry else '',
             ]

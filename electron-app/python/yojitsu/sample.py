@@ -55,8 +55,9 @@ COMPANY_HOLIDAYS = [
 
 HEADER_FILL = solid('DDEBF7')
 ACTUAL_FILL = solid('E2EFDA')
-SCHEDULE_HEADERS = ('日付', '勤怠', '行先', 'PC持出', '宿泊', 'wifi',
-                    '外部設計', '内部設計', '製造/単体テスト', '会議', 'その他', 'PJ外作業', '備考')
+SCHEDULE_HEADERS = ('日付', '勤怠', '行先', 'PC持出', '入館証持出', 'wifi持出',
+                    '外部設計', '内部設計', '製造\n単体テスト', '会議', 'その他', 'PJ外作業', '備考')
+SCHEDULE_HEADERS_OLD = SCHEDULE_HEADERS[:11] + ('備考',)
 
 
 def create_sample_environment(dest: Path, base: Optional[date] = None, force: bool = False) -> List[Path]:
@@ -85,7 +86,8 @@ def create_sample_environment(dest: Path, base: Optional[date] = None, force: bo
         folder = remote_dir / f"{index:02d}_{display}" if storage == 'external' else remote_dir
         folder.mkdir(exist_ok=True)
         path = folder / f"{index:02d}_{display}.xlsx"
-        _create_schedule(path, display, group, months, base, rng, use_formula_dates=(index == 2))
+        _create_schedule(path, display, group, months, base, rng,
+                         use_formula_dates=(index == 2), old_layout_first=(index % 2 == 1))
         created.append(path)
 
     (dest / 'site-settings.json').write_text(
@@ -147,19 +149,22 @@ def _create_db(path: Path, root: Path, months) -> None:
 
 
 def _create_schedule(path: Path, display: str, group: str, months, base: date,
-                     rng: random.Random, use_formula_dates: bool) -> None:
+                     rng: random.Random, use_formula_dates: bool, old_layout_first: bool) -> None:
+    """本番の個別予定と同じ構成で作る（新しい月のシートが左）"""
     wb = Workbook()
     wb.remove(wb.active)
     holidays = {date.fromisoformat(d) for d, _ in PUBLIC_HOLIDAYS}
-    for year, month in months:
+    for index, (year, month) in enumerate(reversed(months)):
+        # 本番には「PJ外作業」列が無い古い月のシートが混ざっている
+        old_layout = old_layout_first and index == len(months) - 1
+        headers = SCHEDULE_HEADERS_OLD if old_layout else SCHEDULE_HEADERS
         ws = wb.create_sheet(to_yyyymm(year, month))
-        ws['A1'] = f"{display} 行動予定・実績 {year}年{month}月"
-        ws['G1'] = '実績'
+        ws['B1'], ws['G1'] = '行動予定', '実績'
         ws['G1'].fill = ACTUAL_FILL
-        for col, title in enumerate(SCHEDULE_HEADERS, start=1):
+        for col, title in enumerate(headers, start=1):
             cell = ws.cell(2, col, title)
             cell.font = Font(bold=True)
-            cell.fill = ACTUAL_FILL if 7 <= col <= 12 else HEADER_FILL
+            cell.fill = ACTUAL_FILL if 7 <= col <= len(headers) - 1 else HEADER_FILL
             cell.border = THIN_BORDER
         start, end = month_range(year, month)
         for row, day in enumerate(iter_dates(start, end), start=3):
@@ -168,12 +173,13 @@ def _create_schedule(path: Path, display: str, group: str, months, base: date,
             else:
                 ws.cell(row, 1, datetime(day.year, day.month, day.day))
             ws.cell(row, 1).number_format = 'm/d(aaa)'
-            _fill_day(ws, row, day, group, day in holidays, day <= base, rng)
+            _fill_day(ws, row, day, group, day in holidays, day <= base, rng, has_pj_outside=not old_layout)
     path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(path)
 
 
-def _fill_day(ws, row: int, day: date, group: str, is_holiday: bool, past: bool, rng: random.Random) -> None:
+def _fill_day(ws, row: int, day: date, group: str, is_holiday: bool, past: bool, rng: random.Random,
+              has_pj_outside: bool) -> None:
     off = day.weekday() >= 5 or is_holiday
     roll = rng.random()
     if off:
@@ -185,28 +191,31 @@ def _fill_day(ws, row: int, day: date, group: str, is_holiday: bool, past: bool,
         attendance, location = '休暇', ''
     elif roll < 0.09:
         attendance, location = rng.choice(('A休', 'P休')), group
-    elif roll < 0.25:
-        attendance, location = '在宅', '自宅'
-    elif roll < 0.33:
-        attendance, location = '出張', '客先（架空商事）'
+    elif roll < 0.11:
+        attendance, location = '\u3000', ''          # 本番にある「全角空白だけ」のセル
+    elif roll < 0.27:
+        attendance, location = '出社', '在宅'
+    elif roll < 0.35:
+        attendance, location = '出社', '客先（架空商事）'
     else:
         attendance, location = '出社', group
 
+    carry = location in ('在宅', '客先（架空商事）')
     ws.cell(row, 2, attendance)
     ws.cell(row, 3, location)
-    ws.cell(row, 4, '〇' if attendance in ('在宅', '出張') else '')
-    ws.cell(row, 5, '〇' if attendance == '出張' and rng.random() < 0.5 else '')
-    ws.cell(row, 6, '〇' if attendance == '在宅' else '')
-    if past and attendance != '休暇':
+    ws.cell(row, 4, '有' if carry else '無')                       # PC持出
+    ws.cell(row, 5, '有' if location.startswith('客先') else '無')   # 入館証持出
+    ws.cell(row, 6, '有' if location == '在宅' and rng.random() < 0.5 else '無')  # wifi持出
+    if past and attendance not in ('休暇', '\u3000'):
         total = 4.0 if attendance in ('A休', 'P休') else rng.choice((7.5, 8.0, 8.0, 8.5, 9.0, 10.0))
         split = rng.sample(range(7, 12), 2)
         ws.cell(row, split[0], total - 2.0 if total > 2 else total)
         if total > 2:
             ws.cell(row, split[1], 2.0)
-        if rng.random() < 0.1:
+        if has_pj_outside and rng.random() < 0.1:
             ws.cell(row, 12, 1.0)
     if rng.random() < 0.05:
-        ws.cell(row, 13, '架空のメモ')
+        ws.cell(row, 13 if has_pj_outside else 12, '架空のメモ')
 
 
 def _create_templates(directory: Path) -> None:
@@ -234,35 +243,41 @@ def _create_templates(directory: Path) -> None:
     ws['A1'].font = Font(bold=True, size=14)
     for col, (name, width) in enumerate(
             (('日付', 12), ('拠点', 12), ('メンバ', 12), ('勤怠', 10), ('行先', 20),
-             ('PC持出', 8), ('宿泊', 8), ('wifi', 8), ('備考', 24)), start=1):
+             ('PC持出', 8), ('入館証', 8), ('wifi', 8), ('備考', 24)), start=1):
         cell = ws.cell(2, col, name)
         cell.font, cell.fill, cell.border = Font(bold=True), HEADER_FILL, THIN_BORDER
         ws.column_dimensions[cell.column_letter].width = width
     wb.save(directory / '一覧カレンダーテンプレ.xlsx')
 
-    for suffix, title in (('自社向け', '作業実績表（自社向け）'), ('PJ向け', '作業実績表（PJ向け）')):
+    # 作業実績表: 本番テンプレート（マスク版）と同じセル配置・数式・印刷範囲にし、架空のロゴ画像を足す
+    for suffix in ('自社向け', 'PJ向け'):
         wb = Workbook()
         ws = wb.active
-        ws.title = 'xx月実績'
-        ws['A1'] = title
-        ws['A1'].font = Font(bold=True, size=14)
-        for ref, label in (('A7', '年'), ('D7', '月'), ('G7', '所属'), ('M7', '氏名'),
-                           ('E9', 'PJ名'), ('E10', 'PJコード')):
+        ws.title = 'XX月実績'
+        labels = {'C2': '承認', 'F2': '査閲', 'G2': '担当', 'C3': '（部長）', 'F3': '（課長）', 'G3': '（担当）',
+                  'J4': '作 業 実 績 表', 'D7': '年', 'F7': '月分', 'G7': '会社名', 'K7': '№', 'M7': '氏名',
+                  'B9': '名\u3000\u3000\u3000\u3000\u3000称', 'B10': 'ＰＪコード', 'B11': '名称毎合計時間',
+                  'B12': '工\u3000\u3000程\u3000\u3000名', 'B13': '工程毎合計時間', 'O9': '月間合計', 'O10': '時間',
+                  'B45': '\u3000（工程名）'}
+        for ref, label in labels.items():
             ws[ref] = label
-            ws[ref].font = Font(bold=True)
-        for col, label in ((2, '日'), (4, '曜日'), (6, '外部設計'), (7, '内部設計'),
-                           (8, '製造/単体テスト'), (9, '会議'), (10, 'その他')):
-            cell = ws.cell(13, col, label)
-            cell.font, cell.fill, cell.border = Font(bold=True), HEADER_FILL, THIN_BORDER
+        ws['J4'].font = Font(bold=True, size=14)
+        for col, label in zip('FGHIJ', ('外部設計', '内部設計', '製造/単体テスト', '会議', 'その他')):
+            ws[f'{col}12'] = label
+        ws['B8'] = '=IF(E7="","",IF(E7=1,B7-1&"/"&12&"/"&B14,B7&"/"&E7-1&"/"&B14))'
+        ws['A13'] = '=IF(B8="","",DATEVALUE(B8))'
+        ws['F11'] = '=SUM(F13:J13)'
+        ws['O11'] = '=IF(SUM(F11:N11)=0,"",SUM(F11:N11))'
+        for col in 'FGHIJKLMN':
+            ws[f'{col}13'] = f'=SUM({col}14:{col}44)'
+        ws['O13'] = '=IF(SUM(F13:N13)=0,"",SUM(F13:N13))'
         for row in range(14, 45):
-            for col in (2, 4, 6, 7, 8, 9, 10):
+            ws[f'C{row}'], ws[f'E{row}'] = '(', ')'
+            ws[f'O{row}'] = f'=IF(SUM(F{row}:N{row})=0,"",SUM(F{row}:N{row}))'
+            for col in range(2, 16):
                 ws.cell(row, col).border = THIN_BORDER
-        # 本番テンプレートと同じ要素（画像・合計の数式・印刷範囲）を持たせ、書き込みで壊れないことを試せるようにする
-        ws['B45'] = '合計'
-        for col in 'FGHIJ':
-            ws[f'{col}45'] = f'=SUM({col}14:{col}44)'
-        ws.print_area = 'A1:N45'
-        ws.add_image(_sample_logo(), 'K1')
+        ws.print_area = 'B1:O47'
+        ws.add_image(_sample_logo(), 'L1')
         wb.save(directory / f'作業実績表テンプレート_{suffix}.xlsx')
 
 

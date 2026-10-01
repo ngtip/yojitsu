@@ -149,9 +149,17 @@ class XlsxPackage:
     def sheet_names(self):
         return [sheet.get('name') for sheet, _ in self._sheets()]
 
+    def find_sheet(self, name: str) -> Optional[str]:
+        """Excel と同じく大文字・小文字を区別せずにシートを探し、実際のシート名を返す"""
+        for actual in self.sheet_names:
+            if actual.casefold() == name.casefold():
+                return actual
+        return None
+
     def sheet_part(self, name: str) -> str:
+        actual = self.find_sheet(name)
         for sheet, part in self._sheets():
-            if sheet.get('name') == name:
+            if sheet.get('name') == actual:
                 return part
         raise XlsxPatchError(f"シートがありません: {name}")
 
@@ -188,8 +196,9 @@ class XlsxPackage:
 
     def copy_sheet(self, source_name: str, new_name: str) -> None:
         """末尾に複製する（Excel の「移動またはコピー」で末尾にコピーしたのと同じ並び）"""
-        if new_name in self.sheet_names:
+        if self.find_sheet(new_name):
             raise XlsxPatchError(f"同名のシートがあります: {new_name}")
+        source_name = self.find_sheet(source_name) or source_name
         source_part = self.sheet_part(source_name)
         source_index = self.sheet_names.index(source_name)
         new_part = self._copy_part_tree(source_part, {})

@@ -3,7 +3,7 @@
 BP: 自社向け と PJ向け の2ファイル / プロパー: PJ向け のみ
 出力先: <出力Dir>/<YYYY>/<MM>/{自社向け,PJ向け}/
 
-テンプレートのシート 'xx月実績' を複製して '<M>月実績' とし、次のセルに書き込む。
+テンプレートのシート 'XX月実績' を複製して '<M>月実績' とし、次のセルに書き込む。
   B7 年 / E7 月 / H7 所属（自社向け=BP会社名, PJ向け=自社正式名） / N7 氏名
   F9 PJ名 / F10 PJコード（自社向けのみ・文字列）
   14〜44行目 = 1〜31日: B 日 / D 曜日 / F〜J 実績（PJ向けは F に合計のみ）
@@ -29,10 +29,9 @@ from ..xlsx_patch import XlsxPackage
 
 logger = logging.getLogger(__name__)
 
-TEMPLATE_SHEET = 'xx月実績'
+TEMPLATE_SHEET = 'XX月実績'   # Excel と同じく大文字・小文字は区別しない
 FIRST_DAY_ROW = 14
 LAST_DAY_ROW = 44
-COL_DAY, COL_WEEKDAY = 2, 4
 COL_HOURS_FIRST = 6     # F〜J
 OWN, PJ = '自社向け', 'PJ向け'
 
@@ -98,7 +97,7 @@ class Writer(Protocol):
 class XmlWriter:
     def write(self, template: Path, output: Path, data: SheetData) -> None:
         package = XlsxPackage(template)
-        if data.sheet_name not in package.sheet_names:
+        if not package.find_sheet(data.sheet_name):
             package.copy_sheet(TEMPLATE_SHEET, data.sheet_name)
         package.set_cells(data.sheet_name, {**data.cells, **data.text_cells}, text_refs=data.text_cells)
         package.save(output)

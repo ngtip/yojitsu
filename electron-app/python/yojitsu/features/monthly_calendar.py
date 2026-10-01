@@ -54,7 +54,7 @@ def collect_day_lines(ctx: RunContext, members: List[Member], year: int, month: 
         for entry in (schedule or {}).values():
             text = _entry_text(entry, holidays)
             if text:
-                lines.append((entry.day.day, text, bool(entry.pc)))
+                lines.append((entry.day.day, text, entry.carries_pc))
         if not lines:
             if member.is_proprietary:
                 ctx.warn(f"{year}年{month}月の予定がありません", member.display_name)

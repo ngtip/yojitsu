@@ -55,8 +55,9 @@ def test_values_and_formats(template, tmp_path):
     ws = wb['10月実績']
     assert (ws['B7'].value, ws['E7'].value, ws['N7'].value, ws['F14'].value) == (2026, 10, '架空 太郎', 7.5)
     assert ws['F10'].value == '00123' and ws['F10'].number_format == '@'
-    assert ws['F45'].value == '=SUM(F14:F44)'               # 合計の数式は残る
-    assert ws['B13'].value == '日' and ws['B13'].font.b     # 見出しの書式も残る
+    assert ws['F13'].value == '=SUM(F14:F44)'               # 合計の数式は残る
+    assert ws['O14'].value.startswith('=IF(SUM(F14:N14)')
+    assert ws['J4'].value == '作 業 実 績 表' and ws['J4'].font.b   # 見出しの書式も残る
     assert len(ws._images) == 1
     assert wb[TEMPLATE_SHEET]['N7'].value is None            # 元シートは変えない
     assert '10月実績' in str(ws.print_area)                  # 印刷範囲も複製される
@@ -96,3 +97,14 @@ def test_duplicate_sheet_name_is_rejected(template):
     package = XlsxPackage(template)
     with pytest.raises(XlsxPatchError):
         package.copy_sheet(TEMPLATE_SHEET, TEMPLATE_SHEET)
+
+
+def test_template_sheet_name_is_case_insensitive(template, tmp_path):
+    """本番テンプレートは「XX月実績」。Excel と同じく大文字・小文字を区別せずに探す"""
+    package = XlsxPackage(template)
+    assert package.find_sheet('xx月実績') == 'XX月実績'
+    package.copy_sheet('xx月実績', '10月実績')
+    package.save(tmp_path / 'out.xlsx')
+    wb = load_workbook(tmp_path / 'out.xlsx')
+    assert wb.sheetnames == ['XX月実績', '10月実績']
+    assert "'10月実績'" in str(wb['10月実績'].print_area)

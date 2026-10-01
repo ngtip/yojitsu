@@ -3,10 +3,11 @@
 旧実装は機能ごとに別々の読み込み処理を持ち、列の解釈も食い違っていた。
 ここで1回だけ読み、全機能が同じ DayEntry を使う。
 
-シート構成（シート名 = YYYYMM）:
-  1行目: タイトル / 2行目: ヘッダ / 3行目以降: 1日1行
-  A 日付 | B 勤怠 | C 行先 | D PC持出 | E 宿泊 | F wifi |
-  G〜K 実績（外部設計/内部設計/製造・単体テスト/会議/その他） | L PJ外作業 | M 備考
+シート構成（シート名 = YYYYMM。新しい月が左）:
+  1行目: 区分見出し（行動予定 / 実績） / 2行目: 列見出し / 3行目以降: 1日1行
+  現行: A 日付 | B 勤怠 | C 行先 | D PC持出 | E 入館証持出 | F wifi持出 |
+        G〜K 実績（外部設計/内部設計/製造・単体テスト/会議/その他） | L PJ外作業 | M 備考
+  旧レイアウトのシートは「PJ外作業」列が無く L が備考。そのため列の位置は2行目の見出しで決める。
 """
 
 import logging
@@ -22,14 +23,25 @@ from .dates import to_yyyymm
 
 logger = logging.getLogger(__name__)
 
+HEADER_ROW = 2
 FIRST_DATA_ROW = 3
-COL_DATE, COL_ATTENDANCE, COL_LOCATION, COL_PC, COL_STAY, COL_WIFI = 1, 2, 3, 4, 5, 6
-COL_HOURS = (7, 8, 9, 10, 11)
-COL_PJ_OUTSIDE = 12
-COL_REMARKS = 13
-
 HOUR_CATEGORIES = ('外部設計', '内部設計', '製造/単体テスト', '会議', 'その他')
 VACATION = '休暇'
+# 持出欄で「持ち出す」を表す値（実データは 有/無。－ や全角空白は「なし」）
+YES_MARKS = frozenset({'有', '有り', 'あり', '〇', '○', '◯'})
+
+# 見出し（空白・改行・記号を除いたもの） -> 項目
+_HEADER_KEYS = {
+    '日付': 'date', '勤怠': 'attendance', '行先': 'location',
+    'pc持出': 'pc', '入館証持出': 'badge', 'wifi持出': 'wifi', 'wifi': 'wifi',
+    '外部設計': 'hours0', '内部設計': 'hours1', '製造単体テスト': 'hours2', '会議': 'hours3', 'その他': 'hours4',
+    'pj外作業': 'pj_outside', '備考': 'remarks',
+}
+# 見出しが読めないときの既定の列位置（現行レイアウト）
+DEFAULT_LAYOUT = {
+    'date': 1, 'attendance': 2, 'location': 3, 'pc': 4, 'badge': 5, 'wifi': 6,
+    'hours0': 7, 'hours1': 8, 'hours2': 9, 'hours3': 10, 'hours4': 11, 'pj_outside': 12, 'remarks': 13,
+}
 
 _DATE_FORMULA = re.compile(r"=A(\d+)\+(\d+)", re.IGNORECASE)
 
@@ -40,15 +52,19 @@ class DayEntry:
     attendance: str = ''
     location: str = ''
     pc: str = ''
-    stay: str = ''
+    badge: str = ''       # 入館証持出（旧コードでは「宿泊」として扱っていた E 列）
     wifi: str = ''
-    hours: Tuple[float, ...] = (0.0,) * len(COL_HOURS)
+    hours: Tuple[float, ...] = (0.0,) * len(HOUR_CATEGORIES)
     pj_outside: float = 0.0
     remarks: str = ''
 
     @property
     def is_vacation(self) -> bool:
         return VACATION in self.attendance
+
+    @property
+    def carries_pc(self) -> bool:
+        return self.pc in YES_MARKS
 
     @property
     def project_hours(self) -> float:
@@ -73,6 +89,20 @@ def _number(value) -> float:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _normalize_header(value) -> str:
+    return re.sub(r'[\s/／・]', '', _text(value)).lower()
+
+
+def detect_layout(header_cells) -> Dict[str, int]:
+    """2行目の見出しから 項目 -> 列番号 を作る。日付列が見つからなければ既定の並びを使う"""
+    layout: Dict[str, int] = {}
+    for col, value in enumerate(header_cells, start=1):
+        key = _HEADER_KEYS.get(_normalize_header(value))
+        if key and key not in layout:
+            layout[key] = col
+    return layout if 'date' in layout else dict(DEFAULT_LAYOUT)
 
 
 def _resolve_date(value, formula, row: int, year: int, month: int,
@@ -103,14 +133,25 @@ def read_month(path: Path, year: int, month: int) -> Optional[MonthSchedule]:
     try:
         if sheet_name not in values_wb.sheetnames:
             return None
-        value_rows = values_wb[sheet_name].iter_rows(min_row=FIRST_DATA_ROW, max_col=COL_REMARKS, values_only=True)
-        formula_rows = formulas_wb[sheet_name].iter_rows(min_row=FIRST_DATA_ROW, max_col=1, values_only=True)
+        values_ws = values_wb[sheet_name]
+        header = next(values_ws.iter_rows(min_row=HEADER_ROW, max_row=HEADER_ROW, values_only=True), ())
+        layout = detect_layout(header)
+        width = max(layout.values())
+        date_col = layout['date']
+
+        def cell(cells, key: str):
+            col = layout.get(key)
+            return cells[col - 1] if col else None
+
+        value_rows = values_ws.iter_rows(min_row=FIRST_DATA_ROW, max_col=width, values_only=True)
+        formula_rows = formulas_wb[sheet_name].iter_rows(
+            min_row=FIRST_DATA_ROW, min_col=date_col, max_col=date_col, values_only=True)
 
         entries: MonthSchedule = {}
         previous: Optional[Tuple[int, date]] = None
         for row_no, (cells, formula_cells) in enumerate(zip(value_rows, formula_rows), start=FIRST_DATA_ROW):
-            cells = tuple(cells) + (None,) * (COL_REMARKS - len(cells))
-            day = _resolve_date(cells[COL_DATE - 1], formula_cells[0], row_no, year, month, previous)
+            cells = tuple(cells) + (None,) * (width - len(cells))
+            day = _resolve_date(cells[date_col - 1], formula_cells[0], row_no, year, month, previous)
             if day is None:
                 continue
             previous = (row_no, day)
@@ -118,14 +159,14 @@ def read_month(path: Path, year: int, month: int) -> Optional[MonthSchedule]:
                 continue
             entries[day] = DayEntry(
                 day=day,
-                attendance=_text(cells[COL_ATTENDANCE - 1]),
-                location=_text(cells[COL_LOCATION - 1]),
-                pc=_text(cells[COL_PC - 1]),
-                stay=_text(cells[COL_STAY - 1]),
-                wifi=_text(cells[COL_WIFI - 1]),
-                hours=tuple(_number(cells[col - 1]) for col in COL_HOURS),
-                pj_outside=_number(cells[COL_PJ_OUTSIDE - 1]),
-                remarks=_text(cells[COL_REMARKS - 1]),
+                attendance=_text(cell(cells, 'attendance')),
+                location=_text(cell(cells, 'location')),
+                pc=_text(cell(cells, 'pc')),
+                badge=_text(cell(cells, 'badge')),
+                wifi=_text(cell(cells, 'wifi')),
+                hours=tuple(_number(cell(cells, f'hours{i}')) for i in range(len(HOUR_CATEGORIES))),
+                pj_outside=_number(cell(cells, 'pj_outside')),
+                remarks=_text(cell(cells, 'remarks')),
             )
         return entries
     finally:

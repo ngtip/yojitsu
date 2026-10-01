@@ -7,7 +7,7 @@ from yojitsu.features.hours_summary import summarize
 from yojitsu.features.leave_matrix import symbol_for
 from yojitsu.holidays import HolidayCalendar
 from yojitsu.members import Member
-from yojitsu.schedule import DayEntry, read_month
+from yojitsu.schedule import DEFAULT_LAYOUT, DayEntry, detect_layout, read_month
 from yojitsu.storage.dummy import DummyStorage
 
 
@@ -103,3 +103,26 @@ def test_dummy_storage_rejects_parent_paths(tmp_path):
     storage = DummyStorage(tmp_path)
     with pytest.raises(ValueError):
         storage.list_files('/sites/../../etc')
+
+
+def test_layout_follows_header_row():
+    current = ('日付', '勤怠', '行先', 'PC持出', '入館証持出', 'wifi持出',
+               '外部設計', '内部設計', '製造\n単体テスト', '会議', 'その他', 'PJ外作業', '備考')
+    assert detect_layout(current) == DEFAULT_LAYOUT
+    # 旧レイアウト: PJ外作業が無く L が備考
+    old = detect_layout(current[:11] + ('備考',))
+    assert old['remarks'] == 12 and 'pj_outside' not in old
+    # 見出しが読めないシートは既定の並び
+    assert detect_layout((None, None)) == DEFAULT_LAYOUT
+
+
+def test_old_layout_sheet_reads_remarks_not_as_hours(sample_env):
+    """旧レイアウトの月は L 列（備考）を PJ外作業として数えない"""
+    remote = sample_env / 'remote' / 'sites' / 'sample' / 'Shared Documents' / '作業実績'
+    oldest = read_month(remote / '01_甲野.xlsx', 2026, 9)      # 01 は最古の月が旧レイアウト
+    assert oldest and all(e.pj_outside == 0 for e in oldest.values())
+
+
+@pytest.mark.parametrize('value, expected', [('有', True), ('無', False), ('－', False), ('', False), ('〇', True)])
+def test_pc_carry_only_when_yes(value, expected):
+    assert DayEntry(date(2026, 10, 1), pc=value).carries_pc is expected
