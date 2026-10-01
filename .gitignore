@@ -1,0 +1,26 @@
+# User-requested ignore targets (root only)
+/.env
+/calendar_generation/
+/data/
+/docs/
+/README.md
+/review_management.csv
+/review_management.yaml
+/REVIEW_POLICY.txt
+
+# 旧実装の退避先（実環境移行が済んだら削除する）
+/_legacy/
+
+# 実データ・認証情報・環境固有設定（公開リポジトリには絶対に入れない）
+/electron-app/.env
+/electron-app/assets/
+/electron-app/config/*.json
+!/electron-app/config/*.example.json
+
+# 生成物・ローカル環境
+/electron-app/node_modules/
+/electron-app/sample-env/
+/electron-app/python/.venv/
+.pytest_cache/
+**/__pycache__/
+*.pyc

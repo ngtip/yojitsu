@@ -1,0 +1,4 @@
+openpyxl>=3.1
+# 実環境のみ必要（SharePoint 取得 / 画像を保持した作業実績表の作成）
+playwright>=1.40
+pywin32>=306; sys_platform == "win32"

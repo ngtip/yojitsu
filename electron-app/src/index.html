@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Attendance Launcher</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <!-- 左側ナビゲーションメニュー -->
+      <nav class="sidebar-menu">
+        <button class="menu-toggle" id="menuToggle" title="メニューを開閉">☰</button>
+        <ul class="menu-items" id="menuItems">
+          <li>
+            <button class="menu-item active" data-tab="tab-run" title="実行">
+              <span class="menu-icon">▶</span>
+              <span class="menu-label">実行</span>
+            </button>
+          </li>
+          <li>
+            <button class="menu-item" data-tab="tab-basic-settings" title="基本設定">
+              <span class="menu-icon">⚙</span>
+              <span class="menu-label">基本設定</span>
+            </button>
+          </li>
+          <li>
+            <button class="menu-item" data-tab="tab-member-settings" title="メンバ設定">
+              <span class="menu-icon">👤</span>
+              <span class="menu-label">メンバ設定</span>
+            </button>
+          </li>
+          <li>
+            <button class="menu-item" data-tab="tab-holiday-settings" title="休日設定">
+              <span class="menu-icon">📅</span>
+              <span class="menu-label">休日設定</span>
+            </button>
+          </li>
+          <li>
+            <button class="menu-item" data-tab="tab-project-settings" title="PJ設定">
+              <span class="menu-icon">📋</span>
+              <span class="menu-label">PJ設定</span>
+            </button>
+          </li>
+          <li>
+            <button class="menu-item" data-tab="tab-dev" title="開発中">
+              <span class="menu-icon">🧪</span>
+              <span class="menu-label">開発中</span>
+            </button>
+          </li>
+        </ul>
+      </nav>
+
+      <!-- メインコンテンツ -->
+      <div class="main-content">
+        <header class="hero">
+          <p class="eyebrow">Attendance Tool Launcher</p>
+          <h1 id="pageTitle">実行設定</h1>
+          <p class="lead" id="pageDescription">
+            ローカル運用とSharePoint運用を切り替えながら、同じ実行フローで設定できる画面です。
+          </p>
+        </header>
+
+        <div class="tabs-container">
+          <!-- タブ1: 実行 -->
+          <div id="tab-run" class="tab-content active">
+            <div id="runFunctionMenuView">
+              <section class="panel">
+                <h2>起動機能を選択</h2>
+                <p class="section-note">最初に機能を選択し、専用の実行画面で操作します。</p>
+                <div class="run-actions">
+                  <button id="openCalendarGeneration" type="button" class="primary">カレンダー生成</button>
+                </div>
+              </section>
+            </div>
+
+            <div id="calendarGenerationView" style="display: none;">
+              <section class="panel">
+                <div class="action-row" style="justify-content: flex-start;">
+                  <button id="backToRunFunctionMenu" type="button" class="secondary">← 実行メニューに戻る</button>
+                </div>
+              </section>
+
+              <section class="panel">
+                <h2>個別予定の取得</h2>
+                <p class="section-note" id="storageHint">リモートの作業実績格納先から、個別予定ファイルを個別予定Dirへ取得します。</p>
+                <div class="run-actions">
+                  <button id="syncSchedules" type="button" class="primary ghost">リモートから個別予定を取得</button>
+                </div>
+              </section>
+
+              <section class="panel">
+                <h2>処理実行</h2>
+                <div class="field-block">
+                  <label for="calendarTargetMonth">対象年月</label>
+                  <input id="calendarTargetMonth" type="month" />
+                </div>
+                <div class="field-block">
+                  <label for="vacationStartDate">休暇ステータス期間（開始日）</label>
+                  <input id="vacationStartDate" type="date" />
+                </div>
+                <div class="field-block">
+                  <label for="vacationEndDate">休暇ステータス期間（終了日）</label>
+                  <input id="vacationEndDate" type="date" />
+                </div>
+                <div class="run-actions">
+                  <button id="runMonthlyCalendar" type="button" class="primary">月間カレンダー作成</button>
+                  <button id="runListCalendar" type="button" class="primary ghost">一覧作成</button>
+                  <button id="runVacationStatusMatrix" type="button" class="primary ghost">休暇ステータス一覧作成</button>
+                  <button id="runAggregateBpHours" type="button" class="primary ghost">実績時間集計</button>
+                  <button id="runGenerateSubmitAllMembers" type="button" class="primary ghost">全メンバー実績表作成</button>
+                </div>
+                <p class="run-note">個別予定Dirのファイルを使って作成します。最新化するには先に「リモートから個別予定を取得」を実行してください。</p>
+                <pre id="executionLog" class="preview execution"></pre>
+              </section>
+            </div>
+          </div>
+
+          <!-- タブ2: 基本設定 -->
+          <div id="tab-basic-settings" class="tab-content">
+            <section class="panel">
+              <h2>SharePoint ログイン初期化</h2>
+              <p class="section-note">ログイン画面で手動ログイン（MFA含む）すると、セッションを保存して個別予定の取得に使います。パスワードは保存しません。</p>
+              <div class="inline-status-row">
+                <p id="sharepointLoginStatus" class="status inline-status">セッションファイル無し（初期化してください）</p>
+                <div class="inline-button-group">
+                  <button id="initSharePointSessionBasic" type="button" class="secondary">ログインセッション初期化</button>
+                  <button id="deleteSharePointSessionBasic" type="button" class="secondary">セッションファイル削除</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <h2>基本設定</h2>
+              <p class="section-note">ディレクトリ設定をローカル・リモートで分けて管理します。</p>
+
+              <div class="settings-subgroup">
+                <h3>ローカル</h3>
+
+                <div class="field-block">
+                  <label for="settingToolRootDir">ツール格納ディレクトリ</label>
+                  <div class="input-row">
+                    <input id="settingToolRootDir" type="text" placeholder="例: D:\work\yojitsu" />
+                    <button id="pickSettingToolRoot" type="button" class="secondary">参照</button>
+                  </div>
+                </div>
+
+                <div class="field-block">
+                  <label for="settingTemplateBaseDir">テンプレート基底ディレクトリ</label>
+                  <div class="input-row">
+                    <input id="settingTemplateBaseDir" type="text" />
+                    <button id="pickSettingTemplateBase" type="button" class="secondary">参照</button>
+                  </div>
+                </div>
+
+                <div class="field-block">
+                  <label for="settingOutputBaseDir">出力ディレクトリ</label>
+                  <div class="input-row">
+                    <input id="settingOutputBaseDir" type="text" />
+                    <button id="pickSettingOutputBase" type="button" class="secondary">参照</button>
+                  </div>
+                </div>
+
+                <div class="field-block">
+                  <label for="settingScheduleBaseDir">個別予定ディレクトリ</label>
+                  <div class="input-row">
+                    <input id="settingScheduleBaseDir" type="text" />
+                    <button id="pickSettingScheduleBase" type="button" class="secondary">参照</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-subgroup">
+                <h3>リモート</h3>
+                <div class="field-block">
+                  <label for="settingSharePointSiteUrl">SharePoint サイトURL</label>
+                  <input id="settingSharePointSiteUrl" type="text" placeholder="例: https://<tenant>.sharepoint.com/sites/<site>" />
+                </div>
+                <div class="field-block">
+                  <label for="settingRemoteWorkDir">作業実績格納先</label>
+                  <input id="settingRemoteWorkDir" type="text" placeholder="例: /sites/<site>/Shared Documents/...（server-relative path）" />
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="action-row">
+                <button id="saveBasicSettings" type="button" class="primary">設定を保存</button>
+              </div>
+              <p id="basicSettingsMessage" class="status"></p>
+            </section>
+          </div>
+
+          <!-- タブ3: メンバ設定 -->
+          <div id="tab-member-settings" class="tab-content">
+            <section class="panel">
+              <h2>メンバ設定</h2>
+              <p class="section-note">全メンバマスタを表示します。</p>
+
+              <div class="action-row member-settings-actions">
+                <button id="toggleMemberGridEdit" type="button" class="secondary">グリッド編集モード</button>
+                <button id="saveMemberGridEdits" type="button" class="primary" style="display: none;">一括保存</button>
+                <button id="cancelMemberGridEdits" type="button" class="secondary" style="display: none;">一括取消</button>
+              </div>
+
+              <div class="table-container">
+                <table id="memberTable" class="data-table">
+                  <thead>
+                    <tr>
+                      <th data-member-sort="member_no" data-member-sort-label="No">No</th>
+                      <th data-member-sort="full_name" data-member-sort-label="フルネーム">フルネーム</th>
+                      <th data-member-sort="display_name" data-member-sort-label="表示名">表示名</th>
+                      <th data-member-sort="group_name" data-member-sort-label="拠点">拠点</th>
+                      <th data-member-sort="is_proprietary" data-member-sort-label="要員区分">要員区分</th>
+                      <th data-member-sort="file_storage_location" data-member-sort-label="ファイル格納区分">ファイル格納区分</th>
+                      <th data-member-sort="organization" data-member-sort-label="所属">所属</th>
+                      <th data-member-sort="abbreviation" data-member-sort-label="短縮名">短縮名</th>
+                      <th>アクション</th>
+                    </tr>
+                  </thead>
+                  <tbody id="memberTableBody">
+                    <!-- 動的に生成 -->
+                  </tbody>
+                </table>
+              </div>
+
+              <div id="memberSettingsMessage" class="status"></div>
+            </section>
+          </div>
+
+          <!-- タブ4: 休日設定 -->
+          <div id="tab-holiday-settings" class="tab-content">
+            <section class="panel">
+              <h2>休日設定</h2>
+              <p class="section-note">休日マスタ（共通カレンダ情報）を管理します。</p>
+
+              <div class="field-block">
+                <label for="holidayName">名前</label>
+                <input id="holidayName" type="text" placeholder="例: 元旦 / 冬期休暇" />
+              </div>
+
+              <div class="field-block">
+                <label for="holidayCategory">区分</label>
+                <select id="holidayCategory">
+                  <option value="祝日">祝日</option>
+                  <option value="休暇">休暇</option>
+                  <option value="イベント">イベント</option>
+                </select>
+              </div>
+
+              <div class="field-block">
+                <label for="holidayStartDate">From</label>
+                <input id="holidayStartDate" type="date" />
+              </div>
+
+              <div class="field-block">
+                <label for="holidayEndDate">To（任意）</label>
+                <input id="holidayEndDate" type="date" />
+              </div>
+
+              <div class="field-block">
+                <label for="holidayNotes">備考（任意）</label>
+                <input id="holidayNotes" type="text" placeholder="任意" />
+              </div>
+
+              <div class="action-row member-settings-actions">
+                <button id="holidaySaveButton" type="button" class="primary">追加</button>
+                <button id="holidayClearButton" type="button" class="secondary">入力クリア</button>
+                <button id="holidayReloadButton" type="button" class="secondary">再取得</button>
+              </div>
+
+              <div class="table-container">
+                <table id="holidayTable" class="data-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>名前</th>
+                      <th>区分</th>
+                      <th>From</th>
+                      <th>To</th>
+                      <th>備考</th>
+                      <th>アクション</th>
+                    </tr>
+                  </thead>
+                  <tbody id="holidayTableBody"></tbody>
+                </table>
+              </div>
+
+              <div id="holidaySettingsMessage" class="status"></div>
+            </section>
+          </div>
+
+          <!-- タブ5: PJ設定 -->
+          <div id="tab-project-settings" class="tab-content">
+            <!-- PJ一覧画面 -->
+            <div id="projectListView" class="project-view-section">
+              <section class="panel">
+                <h2>プロジェクト一覧</h2>
+                <p class="section-note">プロジェクトを管理します。</p>
+
+                <div class="table-container">
+                  <table id="projectTable" class="data-table">
+                    <thead>
+                      <tr>
+                        <th>プロジェクト名</th>
+                        <th>管理者</th>
+                        <th>期間</th>
+                        <th>ステータス</th>
+                        <th>アクション</th>
+                      </tr>
+                    </thead>
+                    <tbody id="projectTableBody">
+                      <!-- 動的に生成 -->
+                    </tbody>
+                  </table>
+                </div>
+
+                <div class="action-row">
+                  <button id="addProjectButton" type="button" class="primary">プロジェクトを追加</button>
+                </div>
+
+                <div id="projectSettingsMessage" class="status"></div>
+              </section>
+            </div>
+
+            <!-- PJ詳細画面（編集時） -->
+            <div id="projectDetailView" class="project-view-section" style="display: none;">
+              <section class="panel">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                  <h2 id="projectDetailTitle">プロジェクト詳細</h2>
+                  <button id="backToProjectList" type="button" class="secondary">← 一覧に戻る</button>
+                </div>
+
+                <div class="project-details">
+                  <div class="detail-row">
+                    <span class="detail-label">プロジェクト名:</span>
+                    <span id="detailProjectName" class="detail-value">-</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">管理者:</span>
+                    <span id="detailAdminName" class="detail-value">-</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">期間:</span>
+                    <span id="detailPeriod" class="detail-value">-</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">ステータス:</span>
+                    <span id="detailStatus" class="detail-value">-</span>
+                  </div>
+                </div>
+
+                <h3 style="margin-top: 24px;">PJ所属メンバ</h3>
+                <div class="table-container">
+                  <table id="projectMemberTable" class="data-table">
+                    <thead>
+                      <tr>
+                        <th>フルネーム</th>
+                        <th>表示名</th>
+                        <th>拠点</th>
+                        <th>要員区分</th>
+                        <th>所属期間</th>
+                        <th>月間表示</th>
+                        <th>アクション</th>
+                      </tr>
+                    </thead>
+                    <tbody id="projectMemberTableBody">
+                      <!-- 動的に生成 -->
+                    </tbody>
+                  </table>
+                </div>
+
+                <div class="action-row">
+                  <button id="addProjectMemberButton" type="button" class="primary">メンバを追加</button>
+                </div>
+
+                <div id="projectDetailMessage" class="status"></div>
+              </section>
+            </div>
+          </div>
+
+          <!-- タブ6: 開発中 -->
+          <div id="tab-dev" class="tab-content">
+            <section class="panel">
+              <h2>SharePoint 検証機能（開発中）</h2>
+              <p class="section-note">server-relative URL または https URL を指定して操作します。</p>
+
+              <div class="field-block">
+                <label for="devSharePointPath">SharePoint パス</label>
+                <input id="devSharePointPath" type="text" placeholder="例: /sites/<site>/Shared Documents/.../<file>.xlsx" />
+              </div>
+
+              <div class="field-block">
+                <label for="devDownloadDir">ダウンロード先</label>
+                <input id="devDownloadDir" type="text" placeholder="例: D:\work\download" />
+              </div>
+
+              <div class="run-actions">
+                <button id="devDownloadSharePointFile" type="button" class="primary">ファイルをダウンロード</button>
+                <button id="devOpenSharePointExcel" type="button" class="secondary">ローカルExcelで開く</button>
+              </div>
+
+              <div class="run-actions" style="margin-top: 10px;">
+                <button id="devRefreshMemberSettings" type="button" class="secondary">メンバ設定を再取得</button>
+                <button id="devRefreshProjectSettings" type="button" class="secondary">PJ設定を再取得</button>
+              </div>
+
+              <p class="run-note">基本設定のストレージ（SharePoint / ダミー）を使ってダウンロードします。</p>
+              <pre id="devExecutionLog" class="preview execution"></pre>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>
