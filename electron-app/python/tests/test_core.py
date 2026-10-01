@@ -129,17 +129,17 @@ def test_pc_carry_only_when_yes(value, expected):
 
 
 def test_group_counts_use_keywords(tmp_path):
-    """拠点の表示名と行先が違う（東京拠点の行先は駅名など）場合はキーワードで数える"""
+    """拠点の表示名と行先が違う（行先に最寄り駅名を書く拠点など）場合はキーワードで数える"""
     from yojitsu.features.list_calendar import _location_counts
     from yojitsu.settings import load_site_settings
 
     path = tmp_path / 'site.json'
-    path.write_text('{"groups": [{"name": "東京", "keywords": ["本社", "支所"]}, {"name": "大阪"}]}', encoding='utf-8')
+    path.write_text('{"groups": [{"name": "拠点X", "keywords": ["本社", "支所"]}, {"name": "拠点Y"}]}', encoding='utf-8')
     site = load_site_settings(path)
     day = date(2026, 10, 1)
     members = [_member(member_id=str(i)) for i in range(4)]
-    schedules = {str(i): {day: DayEntry(day, location=loc)} for i, loc in enumerate(['本社', '支所', '大阪', '在宅'])}
-    assert _location_counts(day, members, schedules, site.groups) == {'東京': 2, '大阪': 1}
+    schedules = {str(i): {day: DayEntry(day, location=loc)} for i, loc in enumerate(['本社', '支所', '拠点Y', '在宅'])}
+    assert _location_counts(day, members, schedules, site.groups) == {'拠点X': 2, '拠点Y': 1}
 
 
 def test_members_with_several_stints_are_merged(db_file):
