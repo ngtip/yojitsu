@@ -17,6 +17,7 @@ from ..members import sort_by_group
 
 logger = logging.getLogger(__name__)
 
+OUTPUT_FILE = '休暇ステータス一覧.xlsx'
 LEGEND = '凡例: 空欄=出社  □=祝日  〇=休暇  △=A休  ▽=P休'
 SATURDAY_FILL = solid('DDEBF7')
 HOLIDAY_FILL = solid('FBE5D6')
@@ -97,7 +98,10 @@ def run(ctx: RunContext, start: date, end: date) -> dict:
     for col in range(2, last_col + 1):
         ws.column_dimensions[get_column_letter(col)].width = 6.5
 
-    output = ctx.output_dir() / f"休暇ステータス一覧_{start:%Y%m%d}_{end:%Y%m%d}.xlsx"
+    # ファイル名は固定。実行のたびに指定した期間の内容で作り直す（期間はシート名で分かる）
+    output = ctx.output_dir() / OUTPUT_FILE
     saved = save_with_fallback(wb, output)
+    if saved != output:
+        ctx.warn(f"出力ファイルが開かれていたため別名で保存しました: {saved.name}")
     logger.info(f"休暇ステータス一覧を出力: {saved}")
     return {'outputs': [str(saved)]}

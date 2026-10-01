@@ -38,7 +38,9 @@ def test_all_tasks(cli, db_file, sample_env):
     code, result = cli('run', 'leave-matrix', '--db-file', db_file,
                        '--start-date', '2026-09-01', '--end-date', '2026-10-31')
     assert code == 0, result
+    assert Path(result['outputs'][0]).name == '休暇ステータス一覧.xlsx'
     ws = load_workbook(result['outputs'][0]).active
+    assert ws.title == '20260901_20261031'
     assert ws.max_column == 1 + 61
     assert ws.cell(3, 1).value == '甲野'
 
@@ -129,3 +131,12 @@ def test_hours_summary_marks_partial_participation(cli, db_file):
     assert tei[12] > 0 and bo[12] > 0 and full[12] == 0     # 期間外の実績（合計には含む）
     warned = {w['member'] for w in result['warnings'] if '参画期間外' in w['message']}
     assert warned == {'丁村', '戊井'}
+
+
+def test_leave_matrix_is_overwritten_with_latest_period(cli, db_file):
+    _sync(cli, db_file)
+    for start, end in (('2026-09-01', '2026-10-31'), ('2026-10-01', '2026-10-15')):
+        code, result = cli('run', 'leave-matrix', '--db-file', db_file, '--start-date', start, '--end-date', end)
+        assert code == 0
+    wb = load_workbook(result['outputs'][0])
+    assert wb.sheetnames == ['20261001_20261015'] and wb.active.max_column == 1 + 15
