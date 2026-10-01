@@ -31,14 +31,27 @@ CREATE TABLE IF NOT EXISTS tool_config (
     description TEXT
 );
 
+CREATE TABLE IF NOT EXISTS admins (
+    admin_id TEXT PRIMARY KEY,
+    admin_name TEXT NOT NULL,
+    organization TEXT,
+    is_active INTEGER DEFAULT 1,
+    notes TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS projects (
     project_id TEXT PRIMARY KEY,
-    project_name TEXT NOT NULL,
-    project_code TEXT,
-    admin_name TEXT,
+    project_name TEXT NOT NULL UNIQUE,
+    admin_id TEXT,
+    description TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
     start_date TEXT,
     end_date TEXT,
-    is_active INTEGER NOT NULL DEFAULT 1
+    project_code TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS members (
@@ -52,19 +65,25 @@ CREATE TABLE IF NOT EXISTS members (
     notes TEXT,
     file_storage_location TEXT NOT NULL DEFAULT 'internal',
     is_proprietary INTEGER NOT NULL DEFAULT 0,
+    schedule_file_name TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 参画1回につき1レコード（同じメンバが期間を空けて複数回参画できる）
 CREATE TABLE IF NOT EXISTS project_members (
+    project_member_id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id TEXT NOT NULL,
     member_id TEXT NOT NULL,
-    assignment_name TEXT,
-    is_proprietary INTEGER NOT NULL DEFAULT 0,
-    include_in_monthly INTEGER NOT NULL DEFAULT 1,
     start_date TEXT NOT NULL,
     end_date TEXT,
-    PRIMARY KEY (project_id, member_id, start_date)
+    assignment_name TEXT,
+    is_proprietary INTEGER DEFAULT 0,
+    include_in_monthly INTEGER DEFAULT 1,
+    notes TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (project_id, member_id, start_date)
 );
 
 CREATE TABLE IF NOT EXISTS holidays (
@@ -81,7 +100,7 @@ CREATE TABLE IF NOT EXISTS holidays (
 
 MEMBER_UPDATABLE_FIELDS = (
     'full_name', 'display_name', 'group_name', 'organization', 'abbreviation',
-    'member_no', 'file_storage_location', 'is_proprietary',
+    'member_no', 'file_storage_location', 'is_proprietary', 'schedule_file_name',
 )
 HOLIDAY_FIELDS = ('project_id', 'name', 'category', 'start_date', 'end_date', 'notes')
 
@@ -107,12 +126,27 @@ class Database:
     def __exit__(self, *_exc) -> None:
         self.close()
 
+    def _columns(self, table: str) -> set:
+        return {row['name'] for row in self.conn.execute(f"PRAGMA table_info({table})")}
+
     def _migrate(self) -> None:
-        columns = {row['name'] for row in self.conn.execute("PRAGMA table_info(projects)")}
-        if columns and 'project_code' not in columns:
-            self.conn.execute("ALTER TABLE projects ADD COLUMN project_code TEXT")
-            self.conn.commit()
+        if self._columns('projects') and 'project_code' not in self._columns('projects'):
+            with self.conn:
+                self.conn.execute("ALTER TABLE projects ADD COLUMN project_code TEXT")
             logger.info("スキーマ更新: projects.project_code を追加")
+        # 個別予定のファイル名は参画ごとではなくメンバで固定する。旧来の project_members.assignment_name から移す
+        if self._columns('members') and 'schedule_file_name' not in self._columns('members'):
+            with self.conn:
+                self.conn.execute("ALTER TABLE members ADD COLUMN schedule_file_name TEXT")
+                self.conn.execute(
+                    """
+                    UPDATE members SET schedule_file_name = (
+                        SELECT pm.assignment_name FROM project_members pm
+                        WHERE pm.member_id = members.member_id AND pm.assignment_name IS NOT NULL
+                        ORDER BY pm.start_date DESC LIMIT 1)
+                    """
+                )
+            logger.info("スキーマ更新: members.schedule_file_name を追加し、PJ所属のファイル名を移行")
 
     def _all(self, query: str, params=()) -> List[Dict[str, Any]]:
         return [dict(row) for row in self.conn.execute(query, params)]
@@ -184,12 +218,16 @@ class Database:
 
     # ---------- プロジェクト ----------
 
+    _PROJECT_SELECT = """
+        SELECT p.*, a.admin_name FROM projects p LEFT JOIN admins a ON a.admin_id = p.admin_id
+    """
+
     def get_projects(self, active_only: bool = True) -> List[Dict[str, Any]]:
-        where = "WHERE is_active = 1 " if active_only else ""
-        return self._all(f"SELECT * FROM projects {where}ORDER BY project_name")
+        where = "WHERE p.is_active = 1 " if active_only else ""
+        return self._all(f"{self._PROJECT_SELECT} {where}ORDER BY p.project_name")
 
     def get_project(self, project_id: str) -> Optional[Dict[str, Any]]:
-        return self._one("SELECT * FROM projects WHERE project_id = ?", (project_id,))
+        return self._one(f"{self._PROJECT_SELECT} WHERE p.project_id = ?", (project_id,))
 
     def resolve_project(self, project_id: Optional[str] = None) -> Dict[str, Any]:
         """指定がなければ有効なPJの先頭を使う"""
@@ -239,20 +277,22 @@ class Database:
 
     def get_project_members(self, project_id: str, period_start: str,
                             period_end: Optional[str] = None) -> List[Dict[str, Any]]:
-        """期間に1日でも在籍しているPJメンバ。period_end 省略時は period_start 時点の在籍者"""
+        """期間に1日でも重なる参画レコード（1人が複数回参画していれば複数行）。
+        period_end 省略時は period_start 時点の在籍者"""
         period_end = period_end or period_start
         return self._all(
             """
             SELECT m.member_id, m.member_no, m.full_name, m.display_name, m.group_name,
                    m.organization, m.abbreviation, m.file_storage_location,
-                   pm.assignment_name, pm.is_proprietary, pm.include_in_monthly,
+                   COALESCE(m.schedule_file_name, pm.assignment_name) AS schedule_file_name,
+                   pm.project_member_id, pm.is_proprietary, pm.include_in_monthly,
                    pm.start_date, pm.end_date
             FROM project_members pm
             JOIN members m ON pm.member_id = m.member_id
             WHERE pm.project_id = ?
               AND pm.start_date <= ?
               AND (pm.end_date IS NULL OR pm.end_date >= ?)
-            ORDER BY m.member_no, m.member_id
+            ORDER BY m.member_no, m.member_id, pm.start_date
             """,
             (project_id, period_end, period_start),
         )
@@ -262,7 +302,7 @@ class Database:
         aliases = set()
         for row in self._all(
             """
-            SELECT m.member_id, m.display_name, m.full_name, pm.assignment_name
+            SELECT m.member_id, m.display_name, m.full_name, m.schedule_file_name, pm.assignment_name
             FROM members m LEFT JOIN project_members pm ON pm.member_id = m.member_id
             WHERE m.file_storage_location = 'external'
             """

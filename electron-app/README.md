@@ -53,6 +53,17 @@ sample-env ではストレージが `dummy` になっており、`sample-env/rem
    - `list_calendar.template_file`（既定: 一覧カレンダーテンプレ.xlsx）
 5. 基本設定の「ログインセッション初期化」で手動ログイン（MFA 含む）してから使う
 
+初回起動時、DB に `members.schedule_file_name`（個別予定のファイル名。メンバで固定）を追加し、
+`project_members.assignment_name` の最新の値を移す。以後ファイル名はメンバ側で管理する。
+
+### PJ参画の履歴
+
+`project_members` は参画1回につき1レコード（開始日〜終了日）。同じメンバが期間を空けて何度参画してもよい。
+
+- 帳票は月単位。月に1日でも参画していればその月は載せる（複数回の参画は1人分にまとめる）
+- 実績集計の予測値は、参画期間内の営業日だけで計算する
+- 参画期間外の日の実績は合計に含め、実績集計の「参画期間」「期間外の実績」列と警告で分かるようにする
+
 ストレージは `storage.backend`（`sharepoint` / `dummy`）で切り替える。未設定なら `sharepoint`。
 環境変数 `YOJITSU_STORAGE_BACKEND` があればそちらが優先。
 

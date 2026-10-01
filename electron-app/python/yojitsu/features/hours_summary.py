@@ -4,6 +4,9 @@
 残り営業日から月末の予測値を2通り出す。
   予測①: 実績 + 残営業日 × 8h
   予測②: 実績 + 残営業日 × (8h + 1日平均の残業)
+
+月の途中で参画・離脱したメンバは、参画していない日を営業日・残営業日に数えない。
+参画期間外の日に入っている実績は合計に含め、「期間外の実績」列に別途出して分かるようにする。
 """
 
 import logging
@@ -40,15 +43,23 @@ class MemberHours:
     holiday_work_actual: int = 0    # そのうち実績あり
     last_actual_day: Optional[date] = None
     avg_overtime: float = 0.0       # 1日平均の残業（0.5h 単位）
-    business_days: int = 0
+    business_days: int = 0          # 参画期間内の営業日数
     forecast_standard: float = 0.0
     forecast_with_overtime: float = 0.0
+    period_label: str = '全期間'     # 月内の参画期間
+    outside_actual: float = 0.0     # 参画期間外の日の実績（合計には含まれている）
 
 
 def summarize(member: Member, entries: Dict[date, DayEntry], holidays: HolidayCalendar,
               year: int, month: int) -> MemberHours:
     start, end = month_range(year, month)
-    result = MemberHours(member, business_days=holidays.business_days(start, end))
+    periods = member.periods_within(start, end)
+    result = MemberHours(
+        member,
+        business_days=sum(holidays.business_days(s, e) for s, e in periods),
+        period_label='全期間' if member.covers(start, end) else
+        '、'.join(f"{s.month}/{s.day}〜{e.month}/{e.day}" for s, e in periods),
+    )
     overtime_total = 0.0
 
     for day in sorted(entries):
@@ -57,6 +68,9 @@ def summarize(member: Member, entries: Dict[date, DayEntry], holidays: HolidayCa
         result.pj_outside += entry.pj_outside
         if entry.has_actual:
             result.last_actual_day = day
+        if not member.participates(day):
+            result.outside_actual += entry.project_hours + entry.pj_outside
+            continue    # 予測の計算（入力済み日数・残業平均・休出）には使わない
         overtime_total += max(0.0, entry.project_hours - STANDARD_HOURS_PER_DAY)
 
         if holidays.is_business_day(day):
@@ -69,6 +83,7 @@ def summarize(member: Member, entries: Dict[date, DayEntry], holidays: HolidayCa
 
     result.actual = round(result.actual, 2)
     result.pj_outside = round(result.pj_outside, 2)
+    result.outside_actual = round(result.outside_actual, 2)
     if result.business_input_days:
         # 0.25 は 0.5 に寄せる（四捨五入ではなく 0.5 刻みの丸め）
         result.avg_overtime = round(overtime_total / result.business_input_days * 2) / 2
@@ -82,10 +97,14 @@ def summarize(member: Member, entries: Dict[date, DayEntry], holidays: HolidayCa
 HEADERS = (
     ('メンバー名', 20), ('実績合計（h）', 16), ('月末予測値（8h/日）', 22), ('平均残業実績（h/日）', 18),
     ('月末予測値（実績平均）', 22), ('PJ外作業合計（h）', 18), ('PJ外作業込実績合計（h）', 24),
-    ('営業日数（月）', 16), ('営業日入力済み日数', 16), ('休出予定日', 14), ('休出実績日', 14),
+    ('営業日数（参画期間）', 18), ('営業日入力済み日数', 16), ('休出予定日', 14), ('休出実績日', 14),
+    ('参画期間', 18), ('期間外の実績（h）', 18),
 )
 HEADER_ROW = 4
+COL_PERIOD, COL_OUTSIDE = 12, 13
 GRAY = solid('D3D3D3')
+PARTIAL_FILL = solid('DDEBF7')    # 月の途中で参画・離脱
+OUTSIDE_FILL = solid('FCE4D6')    # 参画期間外に実績あり
 
 
 def write_sheet(ws, rows: List[MemberHours], year: int, month: int, business_days: int) -> None:
@@ -108,11 +127,16 @@ def write_sheet(ws, rows: List[MemberHours], year: int, month: int, business_day
             item.member.display_name, item.actual, item.forecast_standard, item.avg_overtime,
             item.forecast_with_overtime, item.pj_outside, item.actual + item.pj_outside,
             item.business_days, item.business_input_days, item.holiday_work_planned, item.holiday_work_actual,
+            item.period_label, item.outside_actual,
         )
         for col, value in enumerate(values, start=1):
             cell = ws.cell(row, col, value)
-            if 2 <= col <= 7:
+            if 2 <= col <= 7 or col == COL_OUTSIDE:
                 cell.number_format = '0.0'
+        if item.period_label != '全期間':
+            ws.cell(row, COL_PERIOD).fill = PARTIAL_FILL
+        if item.outside_actual:
+            ws.cell(row, COL_OUTSIDE).fill = OUTSIDE_FILL
 
     last_row = HEADER_ROW + len(rows)
     if rows:
@@ -123,6 +147,7 @@ def write_sheet(ws, rows: List[MemberHours], year: int, month: int, business_day
                     f"{col}{HEADER_ROW + 1}:{col}{last_row}",
                     CellIsRule(operator=operator, formula=[str(bound)], fill=warn_fill, font=warn_font),
                 )
+    ws['A3'] = '※ 月の途中で参画・離脱した人は、参画期間内の営業日で予測。期間外の実績も実績合計に含む（L・M列）'
     ws.freeze_panes = f'A{HEADER_ROW + 1}'
 
 
@@ -139,6 +164,9 @@ def run(ctx: RunContext, year: int, month: int) -> dict:
             ctx.warn(f"個別予定ファイルが見つかりません（{member.file_name}.xlsx）", member.display_name)
         entries = ctx.schedules.month(member.file_name, year, month) or {}
         item = summarize(member, entries, holidays, year, month)
+        if item.outside_actual:
+            ctx.warn(f"参画期間外の実績 {item.outside_actual}h を実績合計に含めています（参画: {item.period_label}）",
+                     member.display_name)
         logger.info(f"{member.display_name}: 実績{item.actual}h / PJ外{item.pj_outside}h / "
                     f"入力済み{item.business_input_days}日 / 休出{item.holiday_work_planned}日")
         rows.append(item)

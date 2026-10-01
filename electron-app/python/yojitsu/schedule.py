@@ -175,7 +175,7 @@ def read_month(path: Path, year: int, month: int) -> Optional[MonthSchedule]:
 
 
 class ScheduleStore:
-    """個別予定ディレクトリ。ファイル名（拡張子なし）= メンバの assignment_name"""
+    """個別予定ディレクトリ。ファイル名（拡張子なし）= メンバの schedule_file_name"""
 
     def __init__(self, directory: Path):
         self.directory = Path(directory)

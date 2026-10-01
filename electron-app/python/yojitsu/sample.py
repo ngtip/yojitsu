@@ -124,29 +124,40 @@ def _create_db(path: Path, root: Path, months) -> None:
         db.set_config('storage', 'dummy_root', str(root / 'remote'))
         db.set_config('sharepoint', 'remote_work_dir', REMOTE_WORK_DIR)
         db.set_config('sharepoint', 'site_url', 'https://example.sharepoint.com/sites/sample')
+        year, month = months[1]
+
+        def in_month(d: int) -> str:
+            return f"{year}-{month:02d}-{d:02d}"
+
+        # 参画履歴（1回の参画 = 1レコード）。基準月に「途中離脱→再参画」「途中参画」の人を入れる
+        stints = {mid: [(start.isoformat(), None)] for mid, *_ in MEMBERS}
+        stints['M004'] = [(start.isoformat(), in_month(10)), (in_month(21), None)]
+        stints['M005'] = [(in_month(16), None)]
         with db.conn:
+            db.conn.execute("INSERT INTO admins (admin_id, admin_name, organization) VALUES ('admin_001', '甲野 一郎', '自社')")
             db.conn.execute(
-                "INSERT INTO projects (project_id, project_name, project_code, admin_name, start_date, is_active)"
-                " VALUES (?, ?, ?, ?, ?, 1)",
-                (PROJECT_ID, 'サンプルPJ', 'S-0001', '甲野 一郎', '2026-01-01'),
+                "INSERT INTO projects (project_id, project_name, project_code, admin_id, start_date, is_active)"
+                " VALUES (?, ?, ?, 'admin_001', ?, 1)",
+                (PROJECT_ID, 'サンプルPJ', 'S-0001', '2026-01-01'),
             )
             for index, (mid, full, disp, group, org, abbr, prop, storage, monthly) in enumerate(MEMBERS, start=1):
                 db.conn.execute(
                     "INSERT INTO members (member_id, member_no, full_name, display_name, abbreviation, group_name,"
-                    " organization, file_storage_location, is_proprietary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (mid, f"{index:03d}", full, disp, abbr, group, org, storage, prop),
+                    " organization, file_storage_location, is_proprietary, schedule_file_name)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (mid, f"{index:03d}", full, disp, abbr, group, org, storage, prop, f"{index:02d}_{disp}"),
                 )
-                db.conn.execute(
-                    "INSERT INTO project_members (project_id, member_id, assignment_name, is_proprietary,"
-                    " include_in_monthly, start_date) VALUES (?, ?, ?, ?, ?, ?)",
-                    (PROJECT_ID, mid, f"{index:02d}_{disp}", prop, monthly, start.isoformat()),
-                )
+                for first, last in stints[mid]:
+                    db.conn.execute(
+                        "INSERT INTO project_members (project_id, member_id, is_proprietary, include_in_monthly,"
+                        " start_date, end_date) VALUES (?, ?, ?, ?, ?, ?)",
+                        (PROJECT_ID, mid, prop, monthly, first, last),
+                    )
         for day, name in PUBLIC_HOLIDAYS:
             db.add_holiday(name, '祝日', day)
         for name, category, first, last in COMPANY_HOLIDAYS:
             db.add_holiday(name, category, first, last)
-        year, month = months[1]
-        db.add_holiday('PJ定例（全体会）', 'イベント', f"{year}-{month:02d}-15", project_id=PROJECT_ID)
+        db.add_holiday('PJ定例（全体会）', 'イベント', in_month(15), project_id=PROJECT_ID)
 
 
 def _create_schedule(path: Path, display: str, group: str, months, base: date,

@@ -140,3 +140,35 @@ def test_group_counts_use_keywords(tmp_path):
     members = [_member(member_id=str(i)) for i in range(4)]
     schedules = {str(i): {day: DayEntry(day, location=loc)} for i, loc in enumerate(['本社', '支所', '大阪', '在宅'])}
     assert _location_counts(day, members, schedules, site.groups) == {'東京': 2, '大阪': 1}
+
+
+def test_members_with_several_stints_are_merged(db_file):
+    from yojitsu.members import load_members
+    from yojitsu.settings import SiteSettings
+
+    with Database(db_file) as db:
+        members = load_members(db, 'PJ-SAMPLE', SiteSettings(), date(2026, 10, 1), date(2026, 10, 31))
+    tei = [m for m in members if m.display_name == '丁村']
+    assert len(tei) == 1 and len(tei[0].periods) == 2
+    assert tei[0].participates(date(2026, 10, 5)) and not tei[0].participates(date(2026, 10, 15))
+    assert tei[0].file_name == '04_丁村'
+
+
+def test_schedule_file_name_is_migrated_from_assignment(tmp_path):
+    """旧DB（members に schedule_file_name が無い）を開くと、PJ所属のファイル名を移す"""
+    import sqlite3
+    path = tmp_path / 'old.sqlite'
+    con = sqlite3.connect(path)
+    con.executescript("""
+        CREATE TABLE projects (project_id TEXT PRIMARY KEY, project_name TEXT, project_code TEXT);
+        CREATE TABLE members (member_id TEXT PRIMARY KEY, full_name TEXT NOT NULL);
+        CREATE TABLE project_members (project_member_id INTEGER PRIMARY KEY, project_id TEXT, member_id TEXT,
+                                      start_date TEXT, end_date TEXT, assignment_name TEXT);
+        INSERT INTO members VALUES ('M1', '架空 太郎');
+        INSERT INTO project_members VALUES (1, 'P', 'M1', '2026-01-01', '2026-03-31', '01_旧名');
+        INSERT INTO project_members VALUES (2, 'P', 'M1', '2026-06-01', NULL, '01_架空');
+    """)
+    con.commit()
+    con.close()
+    with Database(path) as db:
+        assert db.get_member('M1')['schedule_file_name'] == '01_架空'   # 最新の参画のもの

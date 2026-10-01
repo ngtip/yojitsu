@@ -96,7 +96,7 @@ def test_submit_files_match_schedule(cli, db_file, sample_env):
 def test_db_actions_for_settings_screen(cli, db_file):
     code, result = cli('db', '--db-file', db_file, '--action', 'get-project-members',
                        '--project-id', 'PJ-SAMPLE', '--as-of-date', '2026-10-01')
-    assert code == 0 and result['data']['count'] == 6
+    assert code == 0 and result['data']['count'] == 5      # 戊井は 10/16 から参画
 
     code, result = cli('db', '--db-file', db_file, '--action', 'add-holiday',
                        '--name', '架空の日', '--category', '祝日', '--start-date', '2026-10-30')
@@ -111,3 +111,21 @@ def test_missing_template_is_reported(cli, db_file, sample_env):
     (sample_env / 'templates' / '月間カレンダーテンプレ.xlsx').unlink()
     code, result = cli('run', 'monthly-calendar', '--db-file', db_file, '--year-month', '202610')
     assert code == 1 and 'テンプレートが見つかりません' in result['error']
+
+
+def test_hours_summary_marks_partial_participation(cli, db_file):
+    """途中離脱→再参画（丁村）と途中参画（戊井）: 期間外は予測に入れず、期間外の実績を別列に出す"""
+    _sync(cli, db_file)
+    code, result = cli('run', 'hours-summary', '--db-file', db_file, '--year-month', '202610')
+    assert code == 0
+    ws = load_workbook(result['outputs'][0]).active
+    rows = {ws.cell(r, 1).value: [ws.cell(r, c).value for c in range(1, 14)] for r in range(5, ws.max_row + 1)}
+    assert len(rows) == 6                                   # 丁村は2回参画でも1行
+    full, tei, bo = rows['甲野'], rows['丁村'], rows['戊井']
+    # 2026年10月の営業日: 平日22日 - スポーツの日 = 21日
+    assert full[11] == '全期間' and full[7] == 21
+    assert tei[11] == '10/1〜10/10、10/21〜10/31' and tei[7] == 7 + 8
+    assert bo[11] == '10/16〜10/31' and bo[7] == 11
+    assert tei[12] > 0 and bo[12] > 0 and full[12] == 0     # 期間外の実績（合計には含む）
+    warned = {w['member'] for w in result['warnings'] if '参画期間外' in w['message']}
+    assert warned == {'丁村', '戊井'}
