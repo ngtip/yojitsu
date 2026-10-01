@@ -130,3 +130,24 @@ npm start
 
 新構成で問題が出た場合は、旧フォルダをそのまま使えば旧構成に戻る（旧フォルダには手を入れていない前提）。
 DB は手順1のバックアップを戻す（`schedule_file_name` 列が増えた DB でも旧構成は動くが、戻すならバックアップを使う）。
+
+## 付録: 他社テナント（ゲスト参加）の SharePoint から取得できない場合の診断
+
+ゲストとして参加している他社テナントのファイルが取得できない場合は、原因を切り分けるため診断コマンドを実行する。
+出力（`assets/sharepoint-diagnose.md`）にはテナント名・サイト名・人名・Cookie の値を含めないので、
+ユーザーはこれを開発環境に持ち帰って調査できる。
+
+```bash
+cd electron-app/python
+# 1) 今のセッションのまま診断
+.venv/Scripts/python -m yojitsu diagnose-sharepoint --db-file ../assets/db/management.sqlite \
+  --target "https://<接続先テナント>.sharepoint.com/sites/<site>/Shared%20Documents/<file>.xlsx"
+# 2) ブラウザ（Edge）で接続先にログインし直したセッションで診断（別ファイルに保存。通常のセッションは変えない）
+.venv/Scripts/python -m yojitsu diagnose-sharepoint --db-file ../assets/db/management.sqlite --interactive-login \
+  --target "https://<接続先テナント>.sharepoint.com/sites/<site>/Shared%20Documents/<file>.xlsx"
+```
+
+- `--target` は取得できないファイル（またはフォルダ）の https URL。URL はユーザーに確認する
+- 2) はユーザーが画面でログイン操作（MFA 含む）をする。AI が認証情報を入力しないこと
+- 「原因2（相手先のアクセス制限）」と出た場合は、回避を試みずユーザーに報告して終える
+- 終わったら `assets/ms365_diagnose_state.json`（診断用のセッション）は削除してよい。`sharepoint-diagnose.md` をユーザーに渡す

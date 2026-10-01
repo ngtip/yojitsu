@@ -87,6 +87,29 @@ def _download(args) -> Dict[str, Any]:
     return {'outputs': [str(target)]}
 
 
+def _diagnose(args) -> Dict[str, Any]:
+    from .settings import APP_ROOT
+    from .storage import DEFAULT_STATE_FILE
+    from .storage.diagnose import diagnose, interactive_login, to_markdown
+
+    own_site_url = ''
+    if args.db_file:
+        with Database(args.db_file) as db:
+            own_site_url = db.get_config('sharepoint', 'site_url') or ''
+    state_file = Path(args.state_file) if args.state_file else DEFAULT_STATE_FILE
+    if args.interactive_login:
+        # 通常のセッションとは別のファイルに保存する（自社テナント用のセッションを壊さない）
+        state_file = APP_ROOT / 'assets' / 'ms365_diagnose_state.json'
+        interactive_login(args.target, state_file, channel=args.channel)
+    report = diagnose(args.target, state_file, own_site_url)
+    for finding in report['findings']:
+        logger.info(f"見立て: {finding}")
+    report_path = Path(args.report) if args.report else APP_ROOT / 'assets' / 'sharepoint-diagnose.md'
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(to_markdown(report), encoding='utf-8')
+    return {'outputs': [str(report_path)], 'data': report}
+
+
 def _sample(args) -> Dict[str, Any]:
     from .sample import create_sample_environment
 
@@ -183,6 +206,16 @@ def build_parser() -> argparse.ArgumentParser:
     download.add_argument('--remote-path', required=True)
     download.add_argument('--download-dir', required=True)
     download.set_defaults(handler=_download)
+
+    diag = sub.add_parser('diagnose-sharepoint', help='SharePoint 接続の診断（他社テナントへのゲスト参加など）')
+    diag.add_argument('--target', required=True, help='取得できないファイル／フォルダの https URL')
+    diag.add_argument('--db-file', help='自社テナントを見分けるため sharepoint.site_url を読む（任意）')
+    diag.add_argument('--state-file', help='診断に使うセッション（既定: assets/ms365_storage_state.json）')
+    diag.add_argument('--interactive-login', action='store_true',
+                      help='ブラウザで接続先にログインし直したセッションで診断する（別ファイルに保存）')
+    diag.add_argument('--channel', default='msedge', help='--interactive-login で使うブラウザ')
+    diag.add_argument('--report', help='診断結果の Markdown の保存先（既定: assets/sharepoint-diagnose.md）')
+    diag.set_defaults(handler=_diagnose)
 
     sample = sub.add_parser('sample', help='架空データでテスト環境を作る')
     sample.add_argument('--dest', required=True)
