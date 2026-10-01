@@ -10,7 +10,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .db import Database
 
@@ -25,9 +25,10 @@ DEFAULT_LIST_TEMPLATE = '一覧カレンダーテンプレ.xlsx'
 
 @dataclass(frozen=True)
 class Group:
-    name: str
-    label: str
-    threshold: int
+    name: str                   # メンバ定義の拠点名
+    label: str                  # 一覧カレンダーに出す表示名
+    threshold: int              # この人数を超えたら黄色
+    keywords: Tuple[str, ...]   # 行先にこれを含む人を数える（未指定なら label）
 
 
 @dataclass
@@ -50,12 +51,6 @@ class SiteSettings:
                 return index
         return len(self.groups)
 
-    def label_of(self, group_name: Optional[str]) -> Optional[str]:
-        for group in self.groups:
-            if group.name == (group_name or self.default_group):
-                return group.label
-        return None
-
 
 def load_site_settings(path: Optional[Path] = None) -> SiteSettings:
     path = path or Path(os.environ.get('YOJITSU_SITE_SETTINGS') or CONFIG_DIR / 'site-settings.json')
@@ -76,7 +71,12 @@ def load_site_settings(path: Optional[Path] = None) -> SiteSettings:
         own_template_file=raw.get('own_template_file', defaults.own_template_file),
         pj_template_file=raw.get('pj_template_file', defaults.pj_template_file),
         groups=[
-            Group(name=g['name'], label=g.get('label') or g['name'], threshold=int(g.get('threshold', 999)))
+            Group(
+                name=g['name'],
+                label=g.get('label') or g['name'],
+                threshold=int(g.get('threshold', 999)),
+                keywords=tuple(g.get('keywords') or [g.get('label') or g['name']]),
+            )
             for g in raw.get('groups') or []
         ],
         date_highlight_label=highlight.get('label', ''),

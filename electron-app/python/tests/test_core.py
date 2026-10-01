@@ -126,3 +126,17 @@ def test_old_layout_sheet_reads_remarks_not_as_hours(sample_env):
 @pytest.mark.parametrize('value, expected', [('有', True), ('無', False), ('－', False), ('', False), ('〇', True)])
 def test_pc_carry_only_when_yes(value, expected):
     assert DayEntry(date(2026, 10, 1), pc=value).carries_pc is expected
+
+
+def test_group_counts_use_keywords(tmp_path):
+    """拠点の表示名と行先が違う（東京拠点の行先は駅名など）場合はキーワードで数える"""
+    from yojitsu.features.list_calendar import _location_counts
+    from yojitsu.settings import load_site_settings
+
+    path = tmp_path / 'site.json'
+    path.write_text('{"groups": [{"name": "東京", "keywords": ["本社", "支所"]}, {"name": "大阪"}]}', encoding='utf-8')
+    site = load_site_settings(path)
+    day = date(2026, 10, 1)
+    members = [_member(member_id=str(i)) for i in range(4)]
+    schedules = {str(i): {day: DayEntry(day, location=loc)} for i, loc in enumerate(['本社', '支所', '大阪', '在宅'])}
+    assert _location_counts(day, members, schedules, site.groups) == {'東京': 2, '大阪': 1}

@@ -55,6 +55,7 @@ COMPANY_HOLIDAYS = [
 
 HEADER_FILL = solid('DDEBF7')
 ACTUAL_FILL = solid('E2EFDA')
+LIST_HEADER_FILL = solid('FDE9D9')   # 本番の一覧カレンダーの見出し色（太字にしない）
 SCHEDULE_HEADERS = ('日付', '勤怠', '行先', 'PC持出', '入館証持出', 'wifi持出',
                     '外部設計', '内部設計', '製造\n単体テスト', '会議', 'その他', 'PJ外作業', '備考')
 SCHEDULE_HEADERS_OLD = SCHEDULE_HEADERS[:11] + ('備考',)
@@ -245,7 +246,7 @@ def _create_templates(directory: Path) -> None:
             (('日付', 12), ('拠点', 12), ('メンバ', 12), ('勤怠', 10), ('行先', 20),
              ('PC持出', 8), ('入館証', 8), ('wifi', 8), ('備考', 24)), start=1):
         cell = ws.cell(2, col, name)
-        cell.font, cell.fill, cell.border = Font(bold=True), HEADER_FILL, THIN_BORDER
+        cell.fill, cell.border = LIST_HEADER_FILL, THIN_BORDER
         ws.column_dimensions[cell.column_letter].width = width
     wb.save(directory / '一覧カレンダーテンプレ.xlsx')
 

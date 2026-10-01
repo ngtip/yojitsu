@@ -4,7 +4,7 @@
   "own_template_file": "作業実績表テンプレート_自社向け.xlsx",
   "pj_template_file": "作業実績表テンプレート_PJ向け.xlsx",
   "groups": [
-    { "name": "拠点A", "label": "拠点A", "threshold": 8 },
+    { "name": "拠点A", "label": "拠点A", "keywords": ["拠点Aの最寄り駅名など"], "threshold": 8 },
     { "name": "拠点B", "label": "拠点B", "threshold": 6 }
   ],
   "date_highlight": { "label": "拠点A", "min_count": 9 }

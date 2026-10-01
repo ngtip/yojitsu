@@ -8,7 +8,7 @@
 
 表示ルール:
   - 平日は全メンバ、土日祝は勤怠が入っているメンバだけ（誰もいなければ空行1行）
-  - B列: 拠点の先頭行にラベル、次の行に「行先がそのラベルを含む人数」。
+  - B列: 拠点の先頭行にラベル、次の行に「行先が拠点のキーワード（site-settings の keywords）を含む人数」。
     人数が拠点の閾値を超えたら拠点の範囲を黄色にする
   - A列: site-settings の date_highlight に指定した拠点の人数が規定以上なら黄色
   - A列の日付は各日の1行目だけ見えるようにし、2行目以降は背景色と同じ文字色にする
@@ -30,7 +30,7 @@ from ..excel import (THIN, THIN_BORDER, copy_sheet_layout, open_or_create, order
 from ..holidays import HolidayCalendar
 from ..members import Member, sort_by_group
 from ..schedule import DayEntry
-from ..settings import DEFAULT_LIST_TEMPLATE, template_file_name
+from ..settings import DEFAULT_LIST_TEMPLATE, Group, template_file_name
 
 logger = logging.getLogger(__name__)
 
@@ -72,15 +72,16 @@ def _rows_for_day(day: date, members: List[Member], schedules: Dict[str, Dict[da
     return rows or [_Row(None, None)]
 
 
-def _location_counts(day: date, members: List[Member], schedules, labels: List[str]) -> Dict[str, int]:
-    counts = {label: 0 for label in labels}
+def _location_counts(day: date, members: List[Member], schedules, groups: List[Group]) -> Dict[str, int]:
+    """拠点の表示名 -> 行先にその拠点のキーワードを含む人数"""
+    counts = {group.label: 0 for group in groups}
     for member in members:
         entry = schedules[member.member_id].get(day)
         if not entry:
             continue
-        for label in labels:
-            if label in entry.location:
-                counts[label] += 1
+        for group in groups:
+            if any(keyword in entry.location for keyword in group.keywords):
+                counts[group.label] += 1
     return counts
 
 
@@ -188,10 +189,9 @@ def build_sheet(ctx: RunContext, wb, template_ws, year: int, month: int) -> None
     ws = replace_sheet(wb, to_yyyymm(year, month))
     copy_sheet_layout(template_ws, ws)
 
-    labels = [g.label for g in ctx.site.groups]
     row = FIRST_DATA_ROW
     for day in iter_dates(start, end):
-        counts = _location_counts(day, listed, schedules, labels)
+        counts = _location_counts(day, listed, schedules, ctx.site.groups)
         row = _write_day(ws, row, day, _rows_for_day(day, listed, schedules, holidays), counts, ctx, holidays)
 
     ws.freeze_panes = f'A{FIRST_DATA_ROW}'
