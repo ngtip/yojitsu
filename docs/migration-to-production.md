@@ -96,7 +96,7 @@ Python スクリプトに直接書かれていた。新構成ではこれらを 
 | `groups[].name` | DB の `members.group_name` と完全一致する拠点名 | `generate_list_calendar.py` / `generate_calendar.py` の拠点の並び順の定義 |
 | `groups` の配列順 | 一覧・月間カレンダーの拠点の並び順 | 同上（並び順の定義） |
 | `groups[].label` | 一覧カレンダー B 列に出す拠点の表示名（人数集計のキーも兼ねる） | `generate_list_calendar.py` の「拠点 → 表示名」の対応 |
-| `groups[].threshold` | この人数を**超えたら**拠点の範囲を黄色にする | `generate_list_calendar.py` の拠点別の人数しきい値 |
+| `groups[].threshold` | 拠点の座席数。その拠点に出社する人数がこれを**超えたら**（座席数+1人以上で）拠点の範囲を黄色にする。拠点ごとに値が違ってよい | `generate_list_calendar.py` の拠点別の人数しきい値。座席数をユーザーに確認する |
 | `date_highlight.label` / `min_count` | この拠点の人数が `min_count` **以上**なら日付列（A列）を黄色にする | `generate_list_calendar.py` の日付強調の判定 |
 | `own_company_shortname` | PJ向け作業実績表のファイル名の括弧内に入る自社略称 | `generate_submit_files_com.py` の PJ向けファイル名の組み立て |
 | `own_company_fullname` | PJ向け作業実績表の H7 に入る自社名 | `generate_submit_files_com.py` の PJ向けの H7 書き込み |

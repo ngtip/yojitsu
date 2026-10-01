@@ -27,7 +27,7 @@ DEFAULT_LIST_TEMPLATE = '一覧カレンダーテンプレ.xlsx'
 class Group:
     name: str                   # メンバ定義の拠点名
     label: str                  # 一覧カレンダーに出す表示名
-    threshold: int              # この人数を超えたら黄色
+    threshold: int              # 座席数。この拠点に出社する人数がこれを超えたら（座席数+1人以上で）黄色
     keywords: Tuple[str, ...]   # 行先にこれを含む人を数える（未指定なら label）
 
 

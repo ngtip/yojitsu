@@ -195,3 +195,25 @@ def test_unknown_groups_are_warned_and_kept_together(db_file, tmp_path, monkeypa
         members = sort_by_group(ctx.members(date(2026, 10, 1), date(2026, 10, 31)), ctx.site)
     assert [w.message for w in ctx.warnings] == ['拠点「拠点A」が site-settings.json の groups にありません（並び順・人数集計の対象外）']
     assert members[0].group == '拠点B'                          # 設定にある拠点が先
+
+
+@pytest.mark.parametrize('count, marked', [(8, False), (9, True)])
+def test_group_is_marked_only_above_seat_count(tmp_path, count, marked):
+    """座席数 8 の拠点は 9 人以上で黄色（8 人ちょうどは黄色にしない）"""
+    from types import SimpleNamespace
+
+    from openpyxl import Workbook
+
+    from yojitsu.features.list_calendar import HIGHLIGHT, _Row, _write_day
+    from yojitsu.settings import load_site_settings
+
+    path = tmp_path / 'site.json'
+    path.write_text('{"groups": [{"name": "拠点X", "threshold": 8}, {"name": "拠点Y", "threshold": 4}]}',
+                    encoding='utf-8')
+    ctx = SimpleNamespace(site=load_site_settings(path))
+    day = date(2026, 10, 1)
+    rows = [_Row(_member(member_id=str(i), group='拠点X'), None) for i in range(count)]
+    ws = Workbook().active
+    _write_day(ws, 3, day, rows, {'拠点X': count, '拠点Y': 0}, ctx, HolidayCalendar())
+    assert (ws['B3'].fill.start_color.rgb == '00' + HIGHLIGHT) is marked
+    assert ws['B4'].value == f'{count}名'
