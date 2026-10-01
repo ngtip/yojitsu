@@ -1,3 +1,5 @@
-# テスト用（ダミーストレージ + openpyxl だけで動く）
+# テスト用（ダミーストレージ + XML 直接編集で動く。Excel 不要）
 openpyxl>=3.1
+lxml>=5
+pillow>=10
 pytest>=8

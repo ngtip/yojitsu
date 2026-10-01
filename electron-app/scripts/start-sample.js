@@ -19,7 +19,6 @@ const child = spawn(electron, [appRoot], {
     ...process.env,
     YOJITSU_DB: db,
     YOJITSU_SITE_SETTINGS: path.join(sampleRoot, 'site-settings.json'),
-    YOJITSU_SUBMIT_WRITER: process.env.YOJITSU_SUBMIT_WRITER || 'openpyxl',
   },
 });
 child.on('close', (code) => process.exit(code ?? 0));

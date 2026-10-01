@@ -257,4 +257,25 @@ def _create_templates(directory: Path) -> None:
         for row in range(14, 45):
             for col in (2, 4, 6, 7, 8, 9, 10):
                 ws.cell(row, col).border = THIN_BORDER
+        # 本番テンプレートと同じ要素（画像・合計の数式・印刷範囲）を持たせ、書き込みで壊れないことを試せるようにする
+        ws['B45'] = '合計'
+        for col in 'FGHIJ':
+            ws[f'{col}45'] = f'=SUM({col}14:{col}44)'
+        ws.print_area = 'A1:N45'
+        ws.add_image(_sample_logo(), 'K1')
         wb.save(directory / f'作業実績表テンプレート_{suffix}.xlsx')
+
+
+def _sample_logo():
+    """架空のロゴ画像（Pillow で描く）"""
+    from io import BytesIO
+
+    from openpyxl.drawing.image import Image as XlImage
+    from PIL import Image, ImageDraw
+
+    image = Image.new('RGB', (160, 48), '#2F5597')
+    ImageDraw.Draw(image).rectangle((6, 6, 42, 42), fill='#FFFFFF')
+    buffer = BytesIO()
+    image.save(buffer, format='PNG')
+    buffer.seek(0)
+    return XlImage(buffer)

@@ -18,6 +18,7 @@ electron-app/
     holidays.py / members.py  祝日カレンダー / PJメンバ
     features/                 各帳票
     storage/                  リモートストレージ（sharepoint / dummy）
+    xlsx_patch.py             xlsx の XML 直接編集（画像を壊さない書き込み）
     sample.py                 架空データのテスト環境
   python/tests/             pytest
 ```
@@ -59,9 +60,11 @@ sample-env ではストレージが `dummy` になっており、`sample-env/rem
 
 - SharePoint 取得: 旧実装と同じ REST API・Cookie を使うが、ブラウザ起動ではなく Playwright の
   APIRequestContext で呼ぶ形に変えた
-- 作業実績表: テンプレートに画像があり openpyxl で保存するとファイルが壊れるため、本番は Excel COM で書く。
-  COM が使えない環境では openpyxl に切り替わるが、これは画像の無い架空テンプレートでのテスト用
-  （`YOJITSU_SUBMIT_WRITER=com|openpyxl` で固定可）
+- 作業実績表: テンプレートに画像があり openpyxl で保存するとファイルが壊れるため、次の2方式から画面で選ぶ
+  - Excel COM … Excel で書き込む（Excel が必要）
+  - XML直接編集 … xlsx 内の XML のうちセルの値だけを書き換え、画像などは触らない（Excel 不要）。
+    サンプルの架空テンプレート（画像・数式・印刷範囲入り）では検証済み。本番テンプレートでは、
+    出力を Excel で開いて「修復」が出ないこと・画像が残ることを一度確認すること
 
 ## 環境変数
 
@@ -70,7 +73,7 @@ sample-env ではストレージが `dummy` になっており、`sample-env/rem
 | `YOJITSU_DB` | DB ファイルの場所 |
 | `YOJITSU_SITE_SETTINGS` | site-settings.json の場所 |
 | `YOJITSU_STORAGE_BACKEND` / `YOJITSU_DUMMY_ROOT` | ストレージの切替 |
-| `YOJITSU_SUBMIT_WRITER` | 作業実績表の書き込み方式（auto / com / openpyxl） |
+| `YOJITSU_SUBMIT_WRITER` | 作業実績表の書き込み方式（auto / com / xml。画面の選択が優先） |
 | `YOJITSU_PYTHON` | 使う Python（未指定なら python/.venv → python → py） |
 | `SHAREPOINT_SITE_URL` / `PLAYWRIGHT_STATE_FILE` | SharePoint サイトURL / セッションファイル |
 

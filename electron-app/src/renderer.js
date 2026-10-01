@@ -11,6 +11,8 @@ const executionLog = document.getElementById('executionLog');
 const calendarTargetMonthInput = document.getElementById('calendarTargetMonth');
 const vacationStartDateInput = document.getElementById('vacationStartDate');
 const vacationEndDateInput = document.getElementById('vacationEndDate');
+const submitWriterSelect = document.getElementById('submitWriter');
+const SUBMIT_WRITER_STORAGE_KEY = 'yojitsu.submitWriter';
 const openCalendarGenerationButton = document.getElementById('openCalendarGeneration');
 const backToRunFunctionMenuButton = document.getElementById('backToRunFunctionMenu');
 const runFunctionMenuView = document.getElementById('runFunctionMenuView');
@@ -329,12 +331,18 @@ async function runTask(task) {
       return;
     }
     payload.yearMonth = options.targetYearMonth;
+    if (task === 'submit-files' && submitWriterSelect) {
+      payload.writer = submitWriterSelect.value;
+    }
   }
 
   isTaskRunning = true;
   setRunButtonsDisabled(true);
   taskLogSink = appendExecutionLog;
   appendExecutionLog(`--- ${label} を開始 ---`);
+  if (payload.writer) {
+    appendExecutionLog(`書き込み方式: ${submitWriterSelect.selectedOptions[0]?.textContent || payload.writer}`);
+  }
   try {
     const result = task === 'sync'
       ? await window.electronAPI.syncSchedules()
@@ -378,6 +386,25 @@ function init() {
 
   if (syncSchedulesButton) {
     syncSchedulesButton.addEventListener('click', () => runTask('sync'));
+  }
+
+  // 書き込み方式は端末ごとに覚えておく（Excel の有無は端末で決まるため）
+  if (submitWriterSelect) {
+    try {
+      const saved = localStorage.getItem(SUBMIT_WRITER_STORAGE_KEY);
+      if (saved && [...submitWriterSelect.options].some((o) => o.value === saved)) {
+        submitWriterSelect.value = saved;
+      }
+    } catch (_error) {
+      // 保存領域が使えなくても既定値で動く
+    }
+    submitWriterSelect.addEventListener('change', () => {
+      try {
+        localStorage.setItem(SUBMIT_WRITER_STORAGE_KEY, submitWriterSelect.value);
+      } catch (_error) {
+        // 同上
+      }
+    });
   }
 
   if (openCalendarGenerationButton) {

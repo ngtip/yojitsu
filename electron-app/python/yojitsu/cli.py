@@ -171,7 +171,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument('--year-month')
     run.add_argument('--start-date')
     run.add_argument('--end-date')
-    run.add_argument('--writer', choices=('auto', 'com', 'openpyxl'), help='作業実績表の書き込み方式')
+    run.add_argument('--writer', choices=('auto', 'com', 'xml'), help='作業実績表の書き込み方式')
     run.set_defaults(handler=_run_task)
 
     sync = sub.add_parser('sync', help='リモートの個別予定を個別予定Dirへ取得する')

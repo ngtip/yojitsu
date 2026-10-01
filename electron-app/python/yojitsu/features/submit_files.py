@@ -8,13 +8,14 @@ BP: 自社向け と PJ向け の2ファイル / プロパー: PJ向け のみ
   F9 PJ名 / F10 PJコード（自社向けのみ・文字列）
   14〜44行目 = 1〜31日: B 日 / D 曜日 / F〜J 実績（PJ向けは F に合計のみ）
 
-テンプレートには画像があり、openpyxl で保存するとファイルが壊れるため、本番は Excel COM で書く。
-openpyxl での書き込みは画像の無い架空テンプレートでのテスト用（本番テンプレートには使えない）。
+テンプレートには画像があり、openpyxl で保存するとファイルが壊れる。書き込み方式は2つ:
+  com ... Excel COM。Excel が必要
+  xml ... xlsx の XML を直接編集（xlsx_patch.py）。Excel 不要で、画像などのパーツはそのまま残る
+auto は com を試し、使えなければ xml にする。
 """
 
 import logging
 import os
-import shutil
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -24,6 +25,7 @@ from ..context import RunContext
 from ..dates import WEEKDAY_JA, month_range, to_yyyymm
 from ..members import Member
 from ..schedule import DayEntry
+from ..xlsx_patch import XlsxPackage
 
 logger = logging.getLogger(__name__)
 
@@ -93,26 +95,13 @@ class Writer(Protocol):
     def close(self) -> None: ...
 
 
-class OpenpyxlWriter:
+class XmlWriter:
     def write(self, template: Path, output: Path, data: SheetData) -> None:
-        from openpyxl import load_workbook
-
-        shutil.copy2(template, output)
-        wb = load_workbook(output)
-        try:
-            if data.sheet_name in wb.sheetnames:
-                ws = wb[data.sheet_name]
-            else:
-                ws = wb.copy_worksheet(wb[TEMPLATE_SHEET])
-                ws.title = data.sheet_name
-            for ref, value in data.cells.items():
-                ws[ref] = value
-            for ref, value in data.text_cells.items():
-                ws[ref].number_format = '@'
-                ws[ref] = value
-            wb.save(output)
-        finally:
-            wb.close()
+        package = XlsxPackage(template)
+        if data.sheet_name not in package.sheet_names:
+            package.copy_sheet(TEMPLATE_SHEET, data.sheet_name)
+        package.set_cells(data.sheet_name, {**data.cells, **data.text_cells}, text_refs=data.text_cells)
+        package.save(output)
 
     def close(self) -> None:
         pass
@@ -158,16 +147,24 @@ class ComWriter:
         self.excel.Quit()
 
 
+WRITER_KINDS = ('auto', 'com', 'xml')
+
+
 def create_writer(kind: Optional[str] = None) -> Writer:
     kind = (kind or os.environ.get('YOJITSU_SUBMIT_WRITER') or 'auto').lower()
+    if kind not in WRITER_KINDS:
+        raise ValueError(f"書き込み方式は {' / '.join(WRITER_KINDS)} のいずれかです: {kind}")
     if kind in ('com', 'auto'):
         try:
-            return ComWriter()
+            writer = ComWriter()
+            logger.info('書き込み方式: Excel COM')
+            return writer
         except Exception as e:
             if kind == 'com':
-                raise
-            logger.warning(f"Excel COM が使えないため openpyxl で作成します（画像入りテンプレートは壊れます）: {e}")
-    return OpenpyxlWriter()
+                raise RuntimeError(f"Excel COM を起動できません（Excel が必要です）: {e}") from e
+            logger.warning(f"Excel COM が使えないため XML 直接編集で作成します: {e}")
+    logger.info('書き込み方式: XML 直接編集')
+    return XmlWriter()
 
 
 def run(ctx: RunContext, year: int, month: int, writer_kind: Optional[str] = None) -> dict:

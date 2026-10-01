@@ -103,6 +103,13 @@
                   <label for="vacationEndDate">休暇ステータス期間（終了日）</label>
                   <input id="vacationEndDate" type="date" />
                 </div>
+                <div class="field-block">
+                  <label for="submitWriter">実績表の書き込み方式</label>
+                  <select id="submitWriter">
+                    <option value="com">Excel COM（Excel が必要）</option>
+                    <option value="xml">XML直接編集（Excel 不要）</option>
+                  </select>
+                </div>
                 <div class="run-actions">
                   <button id="runMonthlyCalendar" type="button" class="primary">月間カレンダー作成</button>
                   <button id="runListCalendar" type="button" class="primary ghost">一覧作成</button>

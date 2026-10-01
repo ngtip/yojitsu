@@ -18,7 +18,7 @@ def sample_env(tmp_path, monkeypatch):
     dest = tmp_path / 'env'
     create_sample_environment(dest, base=BASE_DATE)
     monkeypatch.setenv('YOJITSU_SITE_SETTINGS', str(dest / 'site-settings.json'))
-    monkeypatch.setenv('YOJITSU_SUBMIT_WRITER', 'openpyxl')
+    monkeypatch.setenv('YOJITSU_SUBMIT_WRITER', 'xml')
     monkeypatch.delenv('YOJITSU_STORAGE_BACKEND', raising=False)
     return dest
 

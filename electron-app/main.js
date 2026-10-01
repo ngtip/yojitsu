@@ -8,6 +8,7 @@ const sharePointLogin = require('./lib/sharepoint-login');
 const DEFAULT_BOUNDS = { width: 980, height: 720 };
 const MIN_SIZE = { width: 860, height: 620 };
 const TASKS = new Set(['monthly-calendar', 'list-calendar', 'leave-matrix', 'hours-summary', 'submit-files']);
+const WRITERS = new Set(['auto', 'com', 'xml']);
 
 // ---------- ウィンドウ ----------
 
@@ -81,12 +82,13 @@ ipcMain.handle('dialog:pick-directory', async (event) => {
   return result.canceled ? '' : result.filePaths[0] || '';
 });
 
-ipcMain.handle('task:run', (event, { task, yearMonth, startDate, endDate } = {}) => {
+ipcMain.handle('task:run', (event, { task, yearMonth, startDate, endDate, writer } = {}) => {
   if (!TASKS.has(task)) return { success: false, error: `不明な処理です: ${task}` };
   const args = ['run', task];
   if (yearMonth) args.push('--year-month', String(yearMonth));
   if (startDate) args.push('--start-date', String(startDate));
   if (endDate) args.push('--end-date', String(endDate));
+  if (task === 'submit-files' && WRITERS.has(writer)) args.push('--writer', writer);
   return runYojitsu(args, { onLog: logTo(event) });
 });
 
