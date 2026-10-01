@@ -151,3 +151,17 @@ cd electron-app/python
 - 2) はユーザーが画面でログイン操作（MFA 含む）をする。AI が認証情報を入力しないこと
 - 「原因2（相手先のアクセス制限）」と出た場合は、回避を試みずユーザーに報告して終える
 - 終わったら `assets/ms365_diagnose_state.json`（診断用のセッション）は削除してよい。`sharepoint-diagnose.md` をユーザーに渡す
+
+## 付録: 一覧カレンダーの並びが拠点ごとにならない場合
+
+プロパー → BP の順に全拠点が混ざって並ぶ場合は、`site-settings.json` の拠点設定が効いていない。
+
+- 実行ログ（画面）に「site-settings.json が無いため既定値で作成しました」が出ている
+  → `electron-app/config/site-settings.json` が無い。旧フォルダの `config/site-settings.json` をコピーする
+- 「拠点「…」が site-settings.json の groups にありません」が出ている
+  → `groups[].name` と DB の拠点名の表記が違う。次で DB 側の表記を確認し、`name` を完全に一致させる
+  （全角・半角、前後の空白に注意）
+
+  ```sql
+  SELECT DISTINCT group_name, length(group_name) FROM members;
+  ```

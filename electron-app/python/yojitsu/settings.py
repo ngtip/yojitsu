@@ -40,6 +40,7 @@ class SiteSettings:
     groups: List[Group] = field(default_factory=list)
     date_highlight_label: str = ''
     date_highlight_min_count: int = 0
+    problem: str = ''           # 読み込めなかった理由（空なら正常に読めた）
 
     @property
     def default_group(self) -> str:
@@ -55,13 +56,16 @@ class SiteSettings:
 def load_site_settings(path: Optional[Path] = None) -> SiteSettings:
     path = path or Path(os.environ.get('YOJITSU_SITE_SETTINGS') or CONFIG_DIR / 'site-settings.json')
     raw: Dict[str, Any] = {}
+    problem = ''
     if path.exists():
         try:
             raw = json.loads(path.read_text(encoding='utf-8'))
         except (OSError, ValueError) as e:
-            logger.warning(f"site-settings の読み込みに失敗したため既定値を使います: {e}")
+            problem = f"site-settings.json を読み込めないため既定値で作成しました（拠点の並び・人数集計・自社名が反映されません）: {e}"
     else:
-        logger.warning(f"site-settings が無いため既定値を使います: {path}")
+        problem = f"site-settings.json が無いため既定値で作成しました（拠点の並び・人数集計・自社名が反映されません）: {path}"
+    if problem:
+        logger.warning(problem)
 
     defaults = SiteSettings()
     highlight = raw.get('date_highlight') or {}
@@ -81,6 +85,7 @@ def load_site_settings(path: Optional[Path] = None) -> SiteSettings:
         ],
         date_highlight_label=highlight.get('label', ''),
         date_highlight_min_count=int(highlight.get('min_count') or 0),
+        problem=problem,
     )
 
 

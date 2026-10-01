@@ -76,5 +76,5 @@ def load_members(db: Database, project_id: str, site: SiteSettings,
 
 
 def sort_by_group(members: List[Member], site: SiteSettings) -> List[Member]:
-    """拠点（site-settings の定義順）→ プロパー優先 → 定義順"""
-    return sorted(members, key=lambda m: (site.group_order(m.group), not m.is_proprietary, m.order))
+    """拠点（site-settings の定義順。設定に無い拠点はその後ろに拠点名ごと）→ プロパー優先 → 定義順"""
+    return sorted(members, key=lambda m: (site.group_order(m.group), m.group, not m.is_proprietary, m.order))

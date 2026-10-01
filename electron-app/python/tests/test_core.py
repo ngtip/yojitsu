@@ -172,3 +172,26 @@ def test_schedule_file_name_is_migrated_from_assignment(tmp_path):
     con.close()
     with Database(path) as db:
         assert db.get_member('M1')['schedule_file_name'] == '01_架空'   # 最新の参画のもの
+
+
+def test_unknown_groups_are_warned_and_kept_together(db_file, tmp_path, monkeypatch):
+    """site-settings が無い／拠点名が一致しないときも拠点ごとにまとめ、画面に警告を出す"""
+    from yojitsu.context import RunContext
+    from yojitsu.members import sort_by_group
+
+    monkeypatch.setenv('YOJITSU_SITE_SETTINGS', str(tmp_path / 'missing.json'))
+    with Database(db_file) as db:
+        ctx = RunContext(db)
+        members = sort_by_group(ctx.members(date(2026, 10, 1), date(2026, 10, 31)), ctx.site)
+    assert 'site-settings.json が無い' in ctx.warnings[0].message
+    groups = [m.group for m in members]
+    assert groups == sorted(groups, key=groups.index)          # 拠点が交互に混ざらない
+    assert groups.index('拠点B') > max(i for i, g in enumerate(groups) if g == '拠点A')
+
+    (tmp_path / 'site.json').write_text('{"groups": [{"name": "拠点B"}]}', encoding='utf-8')
+    monkeypatch.setenv('YOJITSU_SITE_SETTINGS', str(tmp_path / 'site.json'))
+    with Database(db_file) as db:
+        ctx = RunContext(db)
+        members = sort_by_group(ctx.members(date(2026, 10, 1), date(2026, 10, 31)), ctx.site)
+    assert [w.message for w in ctx.warnings] == ['拠点「拠点A」が site-settings.json の groups にありません（並び順・人数集計の対象外）']
+    assert members[0].group == '拠点B'                          # 設定にある拠点が先

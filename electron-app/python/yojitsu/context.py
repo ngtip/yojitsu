@@ -36,9 +36,19 @@ class RunContext:
         self.paths = paths or resolve_tool_paths(db)
         self.schedules = ScheduleStore(self.paths.schedules)
         self.warnings: List[Warning_] = []
+        self._unknown_groups = set()
+        if self.site.problem:
+            self.warnings.append(Warning_(self.site.problem))
 
     def members(self, start: date, end: Optional[date] = None) -> List[Member]:
-        return load_members(self.db, self.project_id, self.site, start, end)
+        members = load_members(self.db, self.project_id, self.site, start, end)
+        # site-settings の拠点名と DB の拠点名が一致しないと、並び順と人数集計から外れる
+        configured = {group.name for group in self.site.groups}
+        for group in sorted({m.group for m in members} - configured - self._unknown_groups):
+            if configured:
+                self.warn(f"拠点「{group}」が site-settings.json の groups にありません（並び順・人数集計の対象外）")
+            self._unknown_groups.add(group)
+        return members
 
     def holidays(self, start: date, end: date) -> HolidayCalendar:
         return HolidayCalendar.load(self.db, self.project_id, start, end)
