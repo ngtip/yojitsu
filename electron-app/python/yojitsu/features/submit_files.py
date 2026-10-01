@@ -8,8 +8,8 @@ BP: 自社向け と PJ向け の2ファイル / プロパー: PJ向け のみ
   F9 PJ名 / F10 PJコード（自社向けのみ・文字列）
   14〜44行目 = 1〜31日: B 日 / D 曜日 / F〜J 実績（PJ向けは F に合計のみ）
 
-テンプレートに画像があると openpyxl では保存時に失われるため、実環境では Excel COM で書く。
-COM が使えない環境（このリポジトリのテスト等）では openpyxl で同じセルに書く。
+テンプレートには画像があり、openpyxl で保存するとファイルが壊れるため、本番は Excel COM で書く。
+openpyxl での書き込みは画像の無い架空テンプレートでのテスト用（本番テンプレートには使えない）。
 """
 
 import logging
@@ -166,7 +166,7 @@ def create_writer(kind: Optional[str] = None) -> Writer:
         except Exception as e:
             if kind == 'com':
                 raise
-            logger.warning(f"Excel COM が使えないため openpyxl で作成します（画像は保持されません）: {e}")
+            logger.warning(f"Excel COM が使えないため openpyxl で作成します（画像入りテンプレートは壊れます）: {e}")
     return OpenpyxlWriter()
 
 

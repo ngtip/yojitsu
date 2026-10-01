@@ -59,8 +59,9 @@ sample-env ではストレージが `dummy` になっており、`sample-env/rem
 
 - SharePoint 取得: 旧実装と同じ REST API・Cookie を使うが、ブラウザ起動ではなく Playwright の
   APIRequestContext で呼ぶ形に変えた
-- 作業実績表: 実環境は Excel COM で書く（テンプレートの画像を保持するため）。COM が使えない環境では
-  openpyxl に切り替わる（`YOJITSU_SUBMIT_WRITER=com|openpyxl` で固定可）
+- 作業実績表: テンプレートに画像があり openpyxl で保存するとファイルが壊れるため、本番は Excel COM で書く。
+  COM が使えない環境では openpyxl に切り替わるが、これは画像の無い架空テンプレートでのテスト用
+  （`YOJITSU_SUBMIT_WRITER=com|openpyxl` で固定可）
 
 ## 環境変数
 
