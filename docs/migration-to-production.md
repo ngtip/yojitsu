@@ -17,7 +17,7 @@
 2. 次をまとめてバックアップする（コピーを別フォルダへ）
    - `assets/db/management.sqlite`（本番 DB）
    - `assets/templates/`（帳票テンプレート）
-   - `config/site-settings.json`、`config/auth-settings.json`
+   - `config/auth-settings.json`（あれば。手順6で削除する）
    - `assets/ms365_storage_state.json`（あれば）
    - `.env`（あれば）
 
@@ -27,7 +27,7 @@
 2. 旧フォルダから次を新しい `electron-app/` 配下の同じ位置へコピーする
    - `assets/db/management.sqlite` → `electron-app/assets/db/management.sqlite`
    - `assets/templates/*` → `electron-app/assets/templates/`
-   - `config/site-settings.json` → `electron-app/config/site-settings.json`
+   - `config/site-settings.json` は**旧構成には存在しない**。手順5で新しく作る
    - `assets/ms365_storage_state.json` は**コピー不要**（ログインし直す）
 3. 依存を入れる
 
@@ -85,17 +85,36 @@
 - テンプレート名は `tool_config` の `monthly_calendar.template_file` / `list_calendar.template_file`
   （無ければ `月間カレンダーテンプレ.xlsx` / `一覧カレンダーテンプレ.xlsx`）
 
-## 5. site-settings.json の確認・修正
+## 5. site-settings.json の作成
 
-雛形は `electron-app/config/site-settings.example.json`。
+旧構成には `site-settings.json` が無い。旧構成では拠点の並び順・人数のしきい値・自社名・テンプレート名が
+Python スクリプトに直接書かれていた。新構成ではこれらを `electron-app/config/site-settings.json`（Git 管理外）に置く。
+旧フォルダのスクリプトから値を読み取り、雛形 `electron-app/config/site-settings.example.json` をコピーして作る。
 
-- `own_template_file`: 自社向け作業実績表のテンプレートファイル名
-- `pj_template_file`: PJ向け作業実績表のテンプレートファイル名
-- `groups`: 拠点。**配列の順番が一覧カレンダーの並び順**になる。並び順はユーザーに確認して合わせる
-- `groups[].keywords`（新規・任意）: 一覧カレンダーの拠点別人数は「行先にこの文字を含む人」を数える。
-  拠点名と行先の表記が違う拠点に設定する（例: 行先に拠点名ではなく最寄り駅名を書く運用なら、その駅名）。
-  未指定なら `label` で数える。行先の実際の表記はユーザーに確認すること
-- `date_highlight`: 日付列を黄色にする拠点ラベルと人数
+| 項目 | 意味 | 旧構成で値が書かれている場所（目安） |
+|---|---|---|
+| `groups[].name` | DB の `members.group_name` と完全一致する拠点名 | `generate_list_calendar.py` / `generate_calendar.py` の拠点の並び順の定義 |
+| `groups` の配列順 | 一覧・月間カレンダーの拠点の並び順 | 同上（並び順の定義） |
+| `groups[].label` | 一覧カレンダー B 列に出す拠点の表示名（人数集計のキーも兼ねる） | `generate_list_calendar.py` の「拠点 → 表示名」の対応 |
+| `groups[].threshold` | この人数を**超えたら**拠点の範囲を黄色にする | `generate_list_calendar.py` の拠点別の人数しきい値 |
+| `date_highlight.label` / `min_count` | この拠点の人数が `min_count` **以上**なら日付列（A列）を黄色にする | `generate_list_calendar.py` の日付強調の判定 |
+| `own_company_shortname` | PJ向け作業実績表のファイル名の括弧内に入る自社略称 | `generate_submit_files_com.py` の PJ向けファイル名の組み立て |
+| `own_company_fullname` | PJ向け作業実績表の H7 に入る自社名 | `generate_submit_files_com.py` の PJ向けの H7 書き込み |
+| `own_template_file` / `pj_template_file` | 自社向け / PJ向けのテンプレートのファイル名 | `generate_submit_files_com.py` で開いているテンプレート（自社向けと PJ向けの2つ） |
+| `groups[].keywords`（新規・任意） | 行先にこの文字を含む人をその拠点の人数として数える。未指定なら `label` | 旧構成には無い。行先の実際の表記（最寄り駅名など）をユーザーに確認する |
+
+手順:
+
+1. 旧スクリプトを読み、上の表の値を集める。拠点名・社名などの値はこの文書やリポジトリに書き戻さないこと
+2. DB の拠点名の表記を確認し、`groups[].name` と一致させる（全角・半角、前後の空白に注意）
+
+   ```sql
+   SELECT DISTINCT group_name, length(group_name) FROM members;
+   ```
+
+3. 集めた値と、拠点の並び順・`keywords` をユーザーに見せて確認を取ってから保存する（文字コードは UTF-8）
+4. 一覧カレンダーを作成し、実行ログに site-settings の警告が出ないこと、拠点ごとに並ぶこと、
+   B 列の人数が旧ツールの出力と合うことを確認する
 
 ## 6. 旧ファイルの片付け
 
@@ -157,7 +176,7 @@ cd electron-app/python
 プロパー → BP の順に全拠点が混ざって並ぶ場合は、`site-settings.json` の拠点設定が効いていない。
 
 - 実行ログ（画面）に「site-settings.json が無いため既定値で作成しました」が出ている
-  → `electron-app/config/site-settings.json` が無い。旧フォルダの `config/site-settings.json` をコピーする
+  → `electron-app/config/site-settings.json` が無い。手順5に沿って作る（旧構成には存在しないのでコピーはできない）
 - 「拠点「…」が site-settings.json の groups にありません」が出ている
   → `groups[].name` と DB の拠点名の表記が違う。次で DB 側の表記を確認し、`name` を完全に一致させる
   （全角・半角、前後の空白に注意）
