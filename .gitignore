@@ -3,6 +3,11 @@
 /data/
 /README.md
 
+# 本番からマスクして持ってきた検証データ（公開リポジトリに入れない）
+/yojitsu_share/
+/yojitsu_share.zip
+/yojitsu_masked/
+
 # 旧実装の退避先（実環境移行が済んだら削除する）
 /_legacy/
 
