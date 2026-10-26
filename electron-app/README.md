@@ -29,13 +29,17 @@ electron-app/
 
 ```bash
 cd electron-app
-python -m venv python/.venv
+python -m venv python/.venv     # Python 3.14
 python/.venv/Scripts/python -m pip install -r python/requirements-dev.txt
-npm install
+npm ci
+npm run setup:electron # Electron 本体の取得（.npmrc で install スクリプトを止めているため）
 npm test               # pytest
 npm run sample         # 架空データの sample-env/ を作る
 npm run start:sample   # sample-env を使って起動
 ```
+
+`.npmrc` で依存パッケージの install スクリプトを止め（`ignore-scripts=true`）、公開から 7 日未満の版は入れない
+（`min-release-age=7`）。急ぎのセキュリティ修正版だけは `npm install <pkg>@<ver> --min-release-age=0` で個別に入れる。
 
 sample-env ではストレージが `dummy` になっており、`sample-env/remote/` を SharePoint に見立てて
 「リモートから個別予定を取得」が動く。人名・社名はすべて架空。
