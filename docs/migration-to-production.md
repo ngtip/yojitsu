@@ -27,15 +27,22 @@
 2. 旧フォルダから次を新しい `electron-app/` 配下の同じ位置へコピーする
    - `assets/db/management.sqlite` → `electron-app/assets/db/management.sqlite`
    - `assets/templates/*` → `electron-app/assets/templates/`
+     - 作業実績表テンプレート（自社向け・PJ向け）は、12行目の工程名が F〜L の
+       「外部設計 / 内部設計 / 製造/単体テスト / 結合テスト / 総合テスト / 会議 / その他」になっていること。
+       旧テンプレート（F〜J の5工程）のままなら、ユーザーに更新済みのテンプレートをもらう。
+       F11（名称毎合計時間）などの合計の数式が K・L 列まで含んでいるかも確認する
+   - 個別予定ファイルは、新しい月のシートに「結合テスト」「総合テスト」の列（製造・単体テストの右）がある。
+     列の位置は見出しで判定するので、古い月のシート（列が無いもの）もそのまま読める
    - `config/site-settings.json` は**旧構成には存在しない**。手順5で新しく作る
    - `assets/ms365_storage_state.json` は**コピー不要**（ログインし直す）
 3. 依存を入れる
 
    ```bash
    cd electron-app
-   python -m venv python/.venv
+   python -m venv python/.venv     # Python 3.14
    python/.venv/Scripts/python -m pip install -r python/requirements.txt
-   npm install
+   npm ci
+   npm run setup:electron          # .npmrc で install スクリプトを止めているため、Electron 本体は別に取る
    ```
 
    `requirements.txt` に `lxml`・`playwright`・`pywin32` が含まれる。
@@ -138,7 +145,7 @@ npm start
 | 2 | 実行 →「リモートから個別予定を取得」 | 個別予定 Dir にファイルが揃う。外部格納（`file_storage_location = external`）のメンバは取得されない |
 | 3 | 月間カレンダー・一覧カレンダー作成 | 旧版と同じ見た目か。PC持出は「有」のときだけ★・黄色になる（旧版は「無」でも付いていた） |
 | 4 | 実績時間集計 | L列「参画期間」、M列「期間外の実績」が追加されている。営業日数は参画期間内で数える |
-| 5 | 全メンバー実績表作成（Excel COM） | 出力に `XX月実績` シートが残らない。**別の Excel ブックを開いたまま実行し、それが閉じられないこと** |
+| 5 | 全メンバー実績表作成（Excel COM） | 自社向けの F〜L に工程別の時間が入り、結合テスト・総合テストが I・J 列に出る。出力に `XX月実績` シートが残らない。**別の Excel ブックを開いたまま実行し、それが閉じられないこと** |
 | 6 | 全メンバー実績表作成（XML直接編集） | 出力を Excel で開いて「修復」ダイアログが出ないこと、画像が残っていること。COM の出力と内容が一致すること |
 | 7 | 休暇ステータス一覧 | 期間 × メンバの記号が正しい |
 

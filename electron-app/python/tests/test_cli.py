@@ -86,7 +86,7 @@ def test_submit_files_match_schedule(cli, db_file, sample_env):
     expected = sum(e.project_hours for e in schedule.values())
     own_ws = load_workbook(own)['10月実績']
     pj_ws = load_workbook(pj)['10月実績']
-    own_total = sum(own_ws.cell(r, c).value or 0 for r in range(14, 45) for c in range(6, 11))
+    own_total = sum(own_ws.cell(r, c).value or 0 for r in range(14, 45) for c in range(6, 13))   # F〜L
     pj_total = sum(pj_ws.cell(r, 6).value or 0 for r in range(14, 45))
     assert own_total == pj_total == expected > 0
     assert own_ws['H7'].value == '架空システム株式会社'

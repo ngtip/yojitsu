@@ -36,8 +36,8 @@ HOLIDAY_WORK_KEYWORD = '出勤'
 @dataclass
 class MemberHours:
     member: Member
-    actual: float = 0.0             # G〜K の合計
-    pj_outside: float = 0.0         # L
+    actual: float = 0.0             # G〜M の合計
+    pj_outside: float = 0.0         # N
     business_input_days: int = 0    # 入力済みの営業日数（休暇は実績が無くても入力済み）
     holiday_work_planned: int = 0   # 土日祝で勤怠に「出勤」
     holiday_work_actual: int = 0    # そのうち実績あり

@@ -6,8 +6,9 @@
 シート構成（シート名 = YYYYMM。新しい月が左）:
   1行目: 区分見出し（行動予定 / 実績） / 2行目: 列見出し / 3行目以降: 1日1行
   現行: A 日付 | B 勤怠 | C 行先 | D PC持出 | E 入館証持出 | F wifi持出 |
-        G〜K 実績（外部設計/内部設計/製造・単体テスト/会議/その他） | L PJ外作業 | M 備考
-  旧レイアウトのシートは「PJ外作業」列が無く L が備考。そのため列の位置は2行目の見出しで決める。
+        G〜M 実績（外部設計/内部設計/製造・単体テスト/結合テスト/総合テスト/会議/その他） | N PJ外作業 | O 備考
+  古い月のシートは列が少ない（結合テスト・総合テストが無い、さらに古いと PJ外作業も無い）。
+  そのため列の位置は2行目の見出しで決め、見出しの無い項目は 0 として読む。
 """
 
 import logging
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 HEADER_ROW = 2
 FIRST_DATA_ROW = 3
-HOUR_CATEGORIES = ('外部設計', '内部設計', '製造/単体テスト', '会議', 'その他')
+HOUR_CATEGORIES = ('外部設計', '内部設計', '製造/単体テスト', '結合テスト', '総合テスト', '会議', 'その他')
 VACATION = '休暇'
 # 持出欄で「持ち出す」を表す値（実データは 有/無。－ や全角空白は「なし」）
 YES_MARKS = frozenset({'有', '有り', 'あり', '〇', '○', '◯'})
@@ -34,13 +35,15 @@ YES_MARKS = frozenset({'有', '有り', 'あり', '〇', '○', '◯'})
 _HEADER_KEYS = {
     '日付': 'date', '勤怠': 'attendance', '行先': 'location',
     'pc持出': 'pc', '入館証持出': 'badge', 'wifi持出': 'wifi', 'wifi': 'wifi',
-    '外部設計': 'hours0', '内部設計': 'hours1', '製造単体テスト': 'hours2', '会議': 'hours3', 'その他': 'hours4',
+    '外部設計': 'hours0', '内部設計': 'hours1', '製造単体テスト': 'hours2', '結合テスト': 'hours3', '総合テスト': 'hours4',
+    '会議': 'hours5', 'その他': 'hours6',
     'pj外作業': 'pj_outside', '備考': 'remarks',
 }
 # 見出しが読めないときの既定の列位置（現行レイアウト）
 DEFAULT_LAYOUT = {
     'date': 1, 'attendance': 2, 'location': 3, 'pc': 4, 'badge': 5, 'wifi': 6,
-    'hours0': 7, 'hours1': 8, 'hours2': 9, 'hours3': 10, 'hours4': 11, 'pj_outside': 12, 'remarks': 13,
+    'hours0': 7, 'hours1': 8, 'hours2': 9, 'hours3': 10, 'hours4': 11, 'hours5': 12, 'hours6': 13,
+    'pj_outside': 14, 'remarks': 15,
 }
 
 _DATE_FORMULA = re.compile(r"=A(\d+)\+(\d+)", re.IGNORECASE)

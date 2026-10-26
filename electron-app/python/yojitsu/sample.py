@@ -23,6 +23,7 @@ from openpyxl.styles import Alignment, Font
 from .dates import iter_dates, month_range, next_month, prev_month, to_yyyymm
 from .db import Database
 from .excel import THIN_BORDER, solid
+from .schedule import HOUR_CATEGORIES
 
 PROJECT_ID = 'PJ-SAMPLE'
 REMOTE_WORK_DIR = '/sites/sample/Shared Documents/作業実績'
@@ -57,8 +58,12 @@ HEADER_FILL = solid('DDEBF7')
 ACTUAL_FILL = solid('E2EFDA')
 LIST_HEADER_FILL = solid('FDE9D9')   # 本番の一覧カレンダーの見出し色（太字にしない）
 SCHEDULE_HEADERS = ('日付', '勤怠', '行先', 'PC持出', '入館証持出', 'wifi持出',
-                    '外部設計', '内部設計', '製造\n単体テスト', '会議', 'その他', 'PJ外作業', '備考')
-SCHEDULE_HEADERS_OLD = SCHEDULE_HEADERS[:11] + ('備考',)
+                    '外部設計', '内部設計', '製造\n単体テスト', '結合テスト', '総合テスト', '会議', 'その他',
+                    'PJ外作業', '備考')
+# 本番に混ざっている古い月のシート
+#   PREV: 結合テスト・総合テストの列が無い / OLD: さらに「PJ外作業」列も無い
+SCHEDULE_HEADERS_PREV = SCHEDULE_HEADERS[:9] + SCHEDULE_HEADERS[11:]
+SCHEDULE_HEADERS_OLD = SCHEDULE_HEADERS_PREV[:11] + ('備考',)
 
 
 def create_sample_environment(dest: Path, base: Optional[date] = None, force: bool = False) -> List[Path]:
@@ -167,9 +172,11 @@ def _create_schedule(path: Path, display: str, group: str, months, base: date,
     wb.remove(wb.active)
     holidays = {date.fromisoformat(d) for d, _ in PUBLIC_HOLIDAYS}
     for index, (year, month) in enumerate(reversed(months)):
-        # 本番には「PJ外作業」列が無い古い月のシートが混ざっている
-        old_layout = old_layout_first and index == len(months) - 1
-        headers = SCHEDULE_HEADERS_OLD if old_layout else SCHEDULE_HEADERS
+        # 最古の月は古いレイアウト（old_layout_first なら「PJ外作業」列も無い）
+        if index == len(months) - 1:
+            headers = SCHEDULE_HEADERS_OLD if old_layout_first else SCHEDULE_HEADERS_PREV
+        else:
+            headers = SCHEDULE_HEADERS
         ws = wb.create_sheet(to_yyyymm(year, month))
         ws['B1'], ws['G1'] = '行動予定', '実績'
         ws['G1'].fill = ACTUAL_FILL
@@ -185,13 +192,17 @@ def _create_schedule(path: Path, display: str, group: str, months, base: date,
             else:
                 ws.cell(row, 1, datetime(day.year, day.month, day.day))
             ws.cell(row, 1).number_format = 'm/d(aaa)'
-            _fill_day(ws, row, day, group, day in holidays, day <= base, rng, has_pj_outside=not old_layout)
+            _fill_day(ws, row, day, group, day in holidays, day <= base, rng, headers)
     path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(path)
 
 
 def _fill_day(ws, row: int, day: date, group: str, is_holiday: bool, past: bool, rng: random.Random,
-              has_pj_outside: bool) -> None:
+              headers: Tuple[str, ...]) -> None:
+    # 実績の列は G から「PJ外作業」（無ければ備考）の手前まで
+    pj_outside_col = headers.index('PJ外作業') + 1 if 'PJ外作業' in headers else None
+    remarks_col = len(headers)
+    hour_cols = range(7, pj_outside_col or remarks_col)
     off = day.weekday() >= 5 or is_holiday
     roll = rng.random()
     if off:
@@ -220,14 +231,14 @@ def _fill_day(ws, row: int, day: date, group: str, is_holiday: bool, past: bool,
     ws.cell(row, 6, '有' if location == '在宅' and rng.random() < 0.5 else '無')  # wifi持出
     if past and attendance not in ('休暇', '\u3000'):
         total = 4.0 if attendance in ('A休', 'P休') else rng.choice((7.5, 8.0, 8.0, 8.5, 9.0, 10.0))
-        split = rng.sample(range(7, 12), 2)
+        split = rng.sample(hour_cols, 2)
         ws.cell(row, split[0], total - 2.0 if total > 2 else total)
         if total > 2:
             ws.cell(row, split[1], 2.0)
-        if has_pj_outside and rng.random() < 0.1:
-            ws.cell(row, 12, 1.0)
+        if pj_outside_col and rng.random() < 0.1:
+            ws.cell(row, pj_outside_col, 1.0)
     if rng.random() < 0.05:
-        ws.cell(row, 13 if has_pj_outside else 12, '架空のメモ')
+        ws.cell(row, remarks_col, '架空のメモ')
 
 
 def _create_templates(directory: Path) -> None:
@@ -274,11 +285,11 @@ def _create_templates(directory: Path) -> None:
         for ref, label in labels.items():
             ws[ref] = label
         ws['J4'].font = Font(bold=True, size=14)
-        for col, label in zip('FGHIJ', ('外部設計', '内部設計', '製造/単体テスト', '会議', 'その他')):
+        for col, label in zip('FGHIJKL', HOUR_CATEGORIES):
             ws[f'{col}12'] = label
         ws['B8'] = '=IF(E7="","",IF(E7=1,B7-1&"/"&12&"/"&B14,B7&"/"&E7-1&"/"&B14))'
         ws['A13'] = '=IF(B8="","",DATEVALUE(B8))'
-        ws['F11'] = '=SUM(F13:J13)'
+        ws['F11'] = '=SUM(F13:L13)'
         ws['O11'] = '=IF(SUM(F11:N11)=0,"",SUM(F11:N11))'
         for col in 'FGHIJKLMN':
             ws[f'{col}13'] = f'=SUM({col}14:{col}44)'

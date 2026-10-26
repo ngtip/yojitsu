@@ -107,10 +107,14 @@ def test_dummy_storage_rejects_parent_paths(tmp_path):
 
 def test_layout_follows_header_row():
     current = ('日付', '勤怠', '行先', 'PC持出', '入館証持出', 'wifi持出',
-               '外部設計', '内部設計', '製造\n単体テスト', '会議', 'その他', 'PJ外作業', '備考')
+               '外部設計', '内部設計', '製造\n単体テスト', '結合テスト', '総合テスト', '会議', 'その他', 'PJ外作業', '備考')
     assert detect_layout(current) == DEFAULT_LAYOUT
-    # 旧レイアウト: PJ外作業が無く L が備考
-    old = detect_layout(current[:11] + ('備考',))
+    # 結合テスト・総合テストが無い月: 会議・その他は J・K、PJ外作業は L
+    prev = detect_layout(current[:9] + current[11:])
+    assert (prev['hours5'], prev['hours6'], prev['pj_outside']) == (10, 11, 12)
+    assert 'hours3' not in prev and 'hours4' not in prev
+    # さらに古い月: PJ外作業も無く L が備考
+    old = detect_layout(current[:9] + current[11:13] + ('備考',))
     assert old['remarks'] == 12 and 'pj_outside' not in old
     # 見出しが読めないシートは既定の並び
     assert detect_layout((None, None)) == DEFAULT_LAYOUT
@@ -121,6 +125,34 @@ def test_old_layout_sheet_reads_remarks_not_as_hours(sample_env):
     remote = sample_env / 'remote' / 'sites' / 'sample' / 'Shared Documents' / '作業実績'
     oldest = read_month(remote / '01_甲野.xlsx', 2026, 9)      # 01 は最古の月が旧レイアウト
     assert oldest and all(e.pj_outside == 0 for e in oldest.values())
+
+
+def test_sheet_without_integration_test_columns_reads_meeting_hours(sample_env):
+    """結合テスト・総合テストの列が無い月は、その2項目を 0 とし、会議・その他を正しい項目で読む"""
+    from openpyxl import load_workbook
+
+    remote = sample_env / 'remote' / 'sites' / 'sample' / 'Shared Documents' / '作業実績'
+    path = remote / '02_乙川.xlsx'                               # 02 は最古の月が「結合・総合なし」
+    ws = load_workbook(path)['202609']
+    assert ws['J2'].value == '会議'
+    entries = read_month(path, 2026, 9)
+    assert entries and all(e.hours[3] == e.hours[4] == 0 for e in entries.values())
+    sheet_meeting = sum(ws.cell(r, 10).value or 0 for r in range(3, ws.max_row + 1))
+    assert sum(e.hours[5] for e in entries.values()) == sheet_meeting
+
+
+def test_submit_sheet_writes_integration_and_system_test_columns():
+    """作業実績表（自社向け）は 結合テスト=I・総合テスト=J、PJ向けは F に合計"""
+    from types import SimpleNamespace
+
+    from yojitsu.features.submit_files import OWN, PJ, build_sheet_data
+
+    ctx = SimpleNamespace(project_name='架空PJ', project_code='', site=SimpleNamespace(own_company_fullname='架空自社'))
+    day = date(2026, 10, 1)
+    entries = {day: DayEntry(day, hours=(1.0, 0, 2.0, 3.0, 4.0, 0.5, 0.25))}
+    own = build_sheet_data(OWN, _member(), entries, 2026, 10, ctx).cells
+    assert [own.get(f'{c}14') for c in 'FGHIJKL'] == [1.0, None, 2.0, 3.0, 4.0, 0.5, 0.25]
+    assert build_sheet_data(PJ, _member(), entries, 2026, 10, ctx).cells['F14'] == 10.75
 
 
 @pytest.mark.parametrize('value, expected', [('有', True), ('無', False), ('－', False), ('', False), ('〇', True)])
