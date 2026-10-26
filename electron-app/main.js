@@ -31,8 +31,12 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
+  // 画面は src/index.html だけ。別ページへの遷移と新しいウィンドウは開かせない
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (event) => event.preventDefault());
   win.loadFile(path.join(__dirname, 'src', 'index.html'));
   win.on('close', () => {
     try {

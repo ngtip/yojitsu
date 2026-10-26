@@ -75,6 +75,14 @@ let refreshHolidaySettingsTable = null;
 // Python のログ（stderr）を、実行中の画面のログ欄へ流す
 let taskLogSink = null;
 
+// innerHTML に埋め込む値は必ずこれを通す（DB の値に HTML が入っていても実行させない）
+const escapeHtml = (value) => String(value || '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 // ==================== メニュー・タブ制御 ====================
 
 function switchTab(tabId) {
@@ -725,13 +733,6 @@ async function initializeMemberSettingsTab() {
     });
   };
 
-  const escapeHtml = (value) => String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-
   const renderMemberRows = () => {
     const sortedMembers = applyMemberSort(memberSettingsData);
     memberTableBody.innerHTML = '';
@@ -1001,14 +1002,15 @@ async function initializeProjectSettingsTab() {
 
         const row = document.createElement('tr');
         row.innerHTML = `
-          <td>${project.project_name}</td>
-          <td>${project.admin_name || 'N/A'}</td>
-          <td>${period}</td>
+          <td>${escapeHtml(project.project_name)}</td>
+          <td>${escapeHtml(project.admin_name || 'N/A')}</td>
+          <td>${escapeHtml(period)}</td>
           <td>${status}</td>
           <td>
-            <button class="secondary" type="button" onclick="editProject('${project.project_id}')">編集</button>
+            <button class="secondary project-edit" type="button">編集</button>
           </td>
         `;
+        row.querySelector('.project-edit').addEventListener('click', () => editProject(project.project_id));
         projectTableBody.appendChild(row);
       });
 
@@ -1041,13 +1043,6 @@ async function initializeHolidaySettingsTab() {
   }
 
   let editingHolidayId = null;
-
-  const escapeHtml = (value) => String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 
   const clearForm = () => {
     editingHolidayId = null;
@@ -1334,16 +1329,18 @@ async function editProject(projectId) {
 
       const row = document.createElement('tr');
       row.innerHTML = `
-        <td>${member.full_name || ''}</td>
-        <td>${member.display_name || ''}</td>
-        <td>${member.group_name || ''}</td>
+        <td>${escapeHtml(member.full_name)}</td>
+        <td>${escapeHtml(member.display_name)}</td>
+        <td>${escapeHtml(member.group_name)}</td>
         <td>${staffType}</td>
-        <td>${period}</td>
+        <td>${escapeHtml(period)}</td>
         <td>${member.include_in_monthly ? '○' : ''}</td>
         <td>
-          <button class="secondary" type="button" onclick="editProjectMember('${projectId}', '${member.member_id}')">編集</button>
+          <button class="secondary project-member-edit" type="button">編集</button>
         </td>
       `;
+      row.querySelector('.project-member-edit')
+        .addEventListener('click', () => editProjectMember(projectId, member.member_id));
       projectMemberTableBody.appendChild(row);
     });
 
