@@ -89,6 +89,10 @@ def test_submit_files_match_schedule(cli, db_file, sample_env):
     own_total = sum(own_ws.cell(r, c).value or 0 for r in range(14, 45) for c in range(6, 13))   # F〜L
     pj_total = sum(pj_ws.cell(r, 6).value or 0 for r in range(14, 45))
     assert own_total == pj_total == expected > 0
+    # 自社向けは結合テスト・総合テストを含む7工程、PJ向けは従来の5工程のまま
+    assert [own_ws[f'{c}12'].value for c in 'HIJ'] == ['製造/単体テスト', '結合テスト', '総合テスト']
+    assert [pj_ws[f'{c}12'].value for c in 'FGHIJK'] == ['外部設計', '内部設計', '製造/単体テスト', '会議', 'その他', None]
+    assert all(pj_ws.cell(r, c).value is None for r in range(14, 45) for c in range(7, 13))
     assert own_ws['H7'].value == '架空システム株式会社'
     assert pj_ws['H7'].value == 'サンプル自社株式会社'
     assert own_ws['F10'].value == 'S-0001' and own_ws['F10'].number_format == '@'

@@ -23,6 +23,7 @@ from openpyxl.styles import Alignment, Font
 from .dates import iter_dates, month_range, next_month, prev_month, to_yyyymm
 from .db import Database
 from .excel import THIN_BORDER, solid
+from .features.submit_files import PJ_HOUR_CATEGORIES
 from .schedule import HOUR_CATEGORIES
 
 PROJECT_ID = 'PJ-SAMPLE'
@@ -273,7 +274,9 @@ def _create_templates(directory: Path) -> None:
     wb.save(directory / '一覧カレンダーテンプレ.xlsx')
 
     # 作業実績表: 本番テンプレート（マスク版）と同じセル配置・数式・印刷範囲にし、架空のロゴ画像を足す
-    for suffix in ('自社向け', 'PJ向け'):
+    # 自社向けは結合テスト・総合テストを含む7工程（F〜L）、PJ向けは従来の5工程（F〜J）
+    layouts = {'自社向け': ('FGHIJKL', HOUR_CATEGORIES), 'PJ向け': ('FGHIJ', PJ_HOUR_CATEGORIES)}
+    for suffix, (hour_cols, categories) in layouts.items():
         wb = Workbook()
         ws = wb.active
         ws.title = 'XX月実績'
@@ -285,11 +288,11 @@ def _create_templates(directory: Path) -> None:
         for ref, label in labels.items():
             ws[ref] = label
         ws['J4'].font = Font(bold=True, size=14)
-        for col, label in zip('FGHIJKL', HOUR_CATEGORIES):
+        for col, label in zip(hour_cols, categories):
             ws[f'{col}12'] = label
         ws['B8'] = '=IF(E7="","",IF(E7=1,B7-1&"/"&12&"/"&B14,B7&"/"&E7-1&"/"&B14))'
         ws['A13'] = '=IF(B8="","",DATEVALUE(B8))'
-        ws['F11'] = '=SUM(F13:L13)'
+        ws['F11'] = f'=SUM(F13:{hour_cols[-1]}13)'
         ws['O11'] = '=IF(SUM(F11:N11)=0,"",SUM(F11:N11))'
         for col in 'FGHIJKLMN':
             ws[f'{col}13'] = f'=SUM({col}14:{col}44)'

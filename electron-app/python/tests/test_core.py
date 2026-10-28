@@ -152,7 +152,8 @@ def test_submit_sheet_writes_integration_and_system_test_columns():
     entries = {day: DayEntry(day, hours=(1.0, 0, 2.0, 3.0, 4.0, 0.5, 0.25))}
     own = build_sheet_data(OWN, _member(), entries, 2026, 10, ctx).cells
     assert [own.get(f'{c}14') for c in 'FGHIJKL'] == [1.0, None, 2.0, 3.0, 4.0, 0.5, 0.25]
-    assert build_sheet_data(PJ, _member(), entries, 2026, 10, ctx).cells['F14'] == 10.75
+    pj = build_sheet_data(PJ, _member(), entries, 2026, 10, ctx).cells
+    assert [pj.get(f'{c}14') for c in 'FGHIJKL'] == [10.75] + [None] * 6
 
 
 @pytest.mark.parametrize('value, expected', [('有', True), ('無', False), ('－', False), ('', False), ('〇', True)])
